@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum TaskStatus {
+  APROBADO
+  EN_PROCESO
+  CAMBIOS_SOLICITADOS
+  HECHO
+  CANCELADO
+}
+
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  passwordHash    String
+  role            Role           @default(USER)
+  taskAssignments TaskAssignee[]
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String
+  stage     String   @default("Planeación") // estado global del proyecto
+  createdAt DateTime @default(now())
+  tasks     Task[]
+  stages    Stage[]  // columnas Kanban del proyecto
+}
+
+model Task {
+  id           String   @id @default(uuid())
+  name         String
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  parentId     String?
+  parent       Task?    @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subTasks     Task[]   @relation("SubTasks")
+  
+  isAssembly   Boolean        @default(false)
+  stage        String         @default("Pendiente")
+  status       TaskStatus     @default(EN_PROCESO)
+  progress     Int            @default(0)
+  
+  assignees    TaskAssignee[]  // Múltiples operarios asignados
+  
+  startDate    DateTime
+  endDate      DateTime
+  
+  predecessors TaskDependency[] @relation("SuccessorTasks")
+  successors   TaskDependency[] @relation("PredecessorTasks")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model TaskDependency {
+  id            String @id @default(uuid())
+  predecessorId String
+  successorId   String
+  
+  predecessor   Task   @relation("PredecessorTasks", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor     Task   @relation("SuccessorTasks", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+}
+
+/** Tabla de asignación múltiple: tarea ↔ operarios */
+model TaskAssignee {
+  taskId String
+  userId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+/** Etapas (columnas) dinámicas del tablero Kanban por proyecto */
+model Stage {
+  id        String  @id @default(uuid())
+  name      String
+  color     String  @default("#94a3b8") // color hex para el borde superior de la columna
+  order     Int     @default(0)          // posición en el tablero
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+}

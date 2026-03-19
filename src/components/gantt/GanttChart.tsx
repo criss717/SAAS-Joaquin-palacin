@@ -210,7 +210,7 @@ export function GanttChart({ initialTasks }: Props) {
             viewMode={viewMode}
             onDateChange={handleTaskChange}
             locale="es"
-            fontFamily="var(--font-geist-sans), Inter, sans-serif"
+            fontFamily="var(--font-outfit), Inter, sans-serif"
             listCellWidth="280px"
             columnWidth={viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : 70}
             headerHeight={50}

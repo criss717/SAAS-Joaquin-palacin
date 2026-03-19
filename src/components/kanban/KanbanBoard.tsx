@@ -34,6 +34,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   const [showStageManager, setShowStageManager] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterAssignee, setFilterAssignee] = useState("ALL");
   const [searchTask, setSearchTask] = useState("");
   const [preSelectedStage, setPreSelectedStage] = useState<string | undefined>(undefined);
 
@@ -91,7 +92,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   return (
     <div className="flex flex-col h-full">
       {/* Barra superior */}
-      <div className="flex items-center justify-start mb-4">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex  items-center gap-3 text-sm text-gray-500">
           <span><strong className="text-gray-800">{stages.length}</strong> etapas</span>
           <span>·</span>
@@ -106,12 +107,30 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           />
         </div>
         <div className="flex gap-2 ml-auto">
-          <div>
+          <div className="w-[180px]">
+            <Select
+              value={filterAssignee}
+              onValueChange={(v) => setFilterAssignee(v ?? "")}
+            >
+              <SelectTrigger className={`cursor-pointer w-full ${filterAssignee === "ALL" ? "text-gray-500" : "text-gray-800"}`}>
+                <SelectValue placeholder="Filtrar por responsable" >
+                  {filterAssignee === "ALL" ? "Todos los responsables" : users.find(u => u.id === filterAssignee)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los responsables</SelectItem>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-[160px]">
             <Select
               value={filterStatus}
               onValueChange={(e) => setFilterStatus(e ?? "")}
             >
-              <SelectTrigger className="cursor-pointer">
+              <SelectTrigger className="cursor-pointer w-full">
                 <SelectValue placeholder="Filtrar por estado" />
               </SelectTrigger>
               <SelectContent>
@@ -160,6 +179,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
                   const columnTasks = tasks.filter(t =>
                     t.stage === column.name &&
                     (filterStatus === "" || t.status === filterStatus) &&
+                    (filterAssignee === "" || filterAssignee === "ALL" || t.assignees.some(a => a.id === filterAssignee)) &&
                     (searchTask === "" || t.name.toLowerCase().includes(searchTask.toLowerCase()))
                   );
 
@@ -359,7 +379,8 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
         users={users}
         allTasks={tasks}
         onClose={() => setSelectedTask(null)}
-        onTaskUpdated={(updated) => {          setTasks(prev => {
+        onTaskUpdated={(updated) => {
+          setTasks(prev => {
             const exists = prev.some(t => t.id === updated.id);
             if (exists) return prev.map(t => t.id === updated.id ? updated : t);
             return [...prev, updated];

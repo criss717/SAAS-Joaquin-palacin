@@ -112,6 +112,27 @@ export async function updateTaskAssignees(taskId: string, userIds: string[]) {
   revalidatePath("/gantt")
 }
 
+/** Actualiza las dependencias (predecesoras) de una tarea */
+export async function updateTaskPredecessors(taskId: string, predecessorIds: string[]) {
+  await requireAuth()
+  // Borramos las dependencias existentes donde esta tarea es la sucesora
+  await prisma.taskDependency.deleteMany({ where: { successorId: taskId } })
+  // Insertamos las nuevas
+  if (predecessorIds.length > 0) {
+    await prisma.taskDependency.createMany({
+      data: predecessorIds.map(id => ({ successorId: taskId, predecessorId: id }))
+    })
+  }
+  revalidatePath("/gantt")
+}
+
+/** Actualiza la tarea padre (ensamble al que pertenece) */
+export async function updateTaskParent(taskId: string, parentId: string | null) {
+  await requireAuth()
+  await prisma.task.update({ where: { id: taskId }, data: { parentId } })
+  revalidatePath("/gantt")
+}
+
 /** Crea una nueva tarea en un proyecto */
 export async function createTask(data: {
   name: string

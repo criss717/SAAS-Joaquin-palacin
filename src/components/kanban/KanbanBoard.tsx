@@ -357,9 +357,9 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
         task={selectedTask}
         stages={stages}
         users={users}
+        allTasks={tasks}
         onClose={() => setSelectedTask(null)}
-        onTaskUpdated={(updated) => {
-          setTasks(prev => {
+        onTaskUpdated={(updated) => {          setTasks(prev => {
             const exists = prev.some(t => t.id === updated.id);
             if (exists) return prev.map(t => t.id === updated.id ? updated : t);
             return [...prev, updated];

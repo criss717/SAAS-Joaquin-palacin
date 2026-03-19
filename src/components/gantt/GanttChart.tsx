@@ -160,7 +160,7 @@ export function GanttChart({ initialTasks }: Props) {
               key={mode}
               onClick={() => setGroupBy(mode)}
               className={`px-3 py-1.5 cursor-pointer rounded-lg text-xs font-medium transition-all ${groupBy === mode
-                ? "bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-200"
+                ? "bg-gray-900 text-white shadow-sm ring-1 ring-gray-200"
                 : "text-gray-500 hover:bg-gray-50"
                 }`}
             >
@@ -211,7 +211,7 @@ export function GanttChart({ initialTasks }: Props) {
             onDateChange={handleTaskChange}
             locale="es"
             fontFamily="var(--font-outfit), Inter, sans-serif"
-            listCellWidth="280px"
+            listCellWidth="200px"
             columnWidth={viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : 70}
             headerHeight={50}
             rowHeight={45}
@@ -235,22 +235,32 @@ export function GanttChart({ initialTasks }: Props) {
           vertical-align: middle !important;
         }
 
-        /* Renombrar columnas en el header (divs impares son los items, pares son separadores) */
-        /* 1: Name, 2: Sep, 3: From, 4: Sep, 5: To */
+        /* Ocultar todo lo que está después del nombre de la tarea (separadores, Inicio, Fin) */
+        ._1nBOt > div:nth-child(n+2) {
+          display: none !important;
+        }
         
-        ._1nBOt > div:nth-child(1) { font-size: 0 !important; }
-        ._1nBOt > div:nth-child(1)::after { content: "Tarea"; font-size: 12px; font-weight: 600; color: #4b5563; }
-        
-        ._1nBOt > div:nth-child(3) { font-size: 0 !important; }
-        ._1nBOt > div:nth-child(3)::after { content: "Inicio"; font-size: 12px; font-weight: 600; color: #4b5563; }
-        
-        ._1nBOt > div:nth-child(5) { font-size: 0 !important; }
-        ._1nBOt > div:nth-child(5)::after { content: "Fin"; font-size: 12px; font-weight: 600; color: #4b5563; }
+        ._34SS0 > div:nth-child(n+2) {
+          display: none !important;
+        }
 
+        /* Solo renombrar el Name a Tarea */
+        ._1nBOt > div:nth-child(1) { font-size: 0 !important; }
+        ._1nBOt > div:nth-child(1)::after { content: "Tarea"; font-size: 13px; font-weight: 700; color: #374151; }
+        
         /* Alinear a la izquierda solo el nombre de la tarea en el body */
         ._34SS0 > div:first-child {
           text-align: left !important;
           padding-left: 12px !important;
+        }
+
+        /* Contraste del texto dentro de las barras del Gantt */
+        ._3zRJQ {
+          fill: #4b5563 !important; /* Gris muy oscuro casi negro */
+          font-weight: 700 !important;
+        }
+        ._3KcaM {
+          fill: #4b5563 !important;
         }
 
         /* Estilo para las filas de grupo (proyectos virtuales) */

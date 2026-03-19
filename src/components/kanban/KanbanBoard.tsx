@@ -100,7 +100,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
         </div>
         <div className="flex ml-auto">
           <Input
-            placeholder="Buscar tarea..."
+            placeholder="Buscar tarea / pieza / ensamble..."
             value={searchTask}
             onChange={(e) => setSearchTask(e.target.value)}
             className="w-100"

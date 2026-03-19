@@ -14,13 +14,13 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   const [users, setUsers] = useState(initialUsers);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
+
   // Create / Edit states
   const [selectedUser, setSelectedUser] = useState<UserWithoutPassword | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("USER");
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState(""); // For "Email sent" messages
@@ -82,7 +82,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
 
   const handleDelete = async (id: string, userName: string) => {
     if (!confirm(`¿Estás seguro de que quieres eliminar a ${userName}? Esta acción no se puede deshacer.`)) return;
-    
+
     const res = await deleteUser(id);
     if (res.success) {
       setUsers(prev => prev.filter(u => u.id !== id));
@@ -95,17 +95,17 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
     <div className="space-y-4">
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-between">
         <div className="flex gap-4">
-           {/* Resumen o filtros rápidos en el futuro */}
-           <div className="bg-blue-50 text-blue-800 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
-              <User size={16} className="text-blue-500"/>
-              <span className="text-sm font-bold">Total: {users.length}</span>
-           </div>
-           <div className="bg-purple-50 text-purple-800 px-4 py-2 rounded-xl border border-purple-100 flex items-center gap-2">
-              <ShieldCheck size={16} className="text-purple-500"/>
-              <span className="text-sm font-bold">Admins: {users.filter(u => u.role === 'ADMIN').length}</span>
-           </div>
+          {/* Resumen o filtros rápidos en el futuro */}
+          <div className="bg-blue-50 text-blue-800 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
+            <User size={16} className="text-blue-500" />
+            <span className="text-sm font-bold">Total: {users.length}</span>
+          </div>
+          <div className="bg-purple-50 text-purple-800 px-4 py-2 rounded-xl border border-purple-100 flex items-center gap-2">
+            <ShieldCheck size={16} className="text-purple-500" />
+            <span className="text-sm font-bold">Admins: {users.filter(u => u.role === 'ADMIN').length}</span>
+          </div>
         </div>
-        <Button onClick={openInviteModal} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-200">
+        <Button onClick={openInviteModal} className="bg-blue-600 hover:bg-blue-700 cursor-pointer text-white rounded-xl ">
           <Plus size={16} className="mr-2" /> Invitar Persona
         </Button>
       </div>
@@ -131,28 +131,27 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
                 </td>
                 <td className="px-6 py-4 text-gray-500">{user.email}</td>
                 <td className="px-6 py-4">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border ${
-                    user.role === 'ADMIN' 
-                      ? 'bg-purple-50 text-purple-700 border-purple-200' 
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border ${user.role === 'ADMIN'
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
                     {user.role === 'ADMIN' ? <ShieldAlert size={10} /> : <User size={10} />}
                     {user.role}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2">
-                    <Button 
-                      variant="outline" size="sm" onClick={() => openEditModal(user)} 
+                    <Button
+                      variant="outline" size="sm" onClick={() => openEditModal(user)}
                       disabled={user.id === currentUserId}
-                      className="h-8 rounded-lg text-gray-500 border-gray-200 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                      className="h-8 rounded-lg text-gray-500 border-gray-200 cursor-pointer hover:text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                     >
                       <Edit2 size={14} />
                     </Button>
-                    <Button 
-                      variant="outline" size="sm" onClick={() => handleDelete(user.id, user.name)} 
+                    <Button
+                      variant="outline" size="sm" onClick={() => handleDelete(user.id, user.name)}
                       disabled={user.id === currentUserId}
-                      className="h-8 rounded-lg text-gray-500 border-gray-200 hover:text-red-600 hover:bg-red-50 hover:border-red-200 disabled:opacity-50"
+                      className="h-8 rounded-lg text-gray-500 border-gray-20 cursor-pointer hover:text-red-600 hover:bg-red-50 hover:border-red-200 disabled:opacity-50"
                     >
                       <Trash2 size={14} />
                     </Button>
@@ -201,9 +200,9 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
                 </SelectContent>
               </Select>
             </div>
-            
+
             {error && <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-xl">{error}</div>}
-            {successMsg && <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 text-xs font-bold rounded-xl flex items-center gap-2"><Mail size={14}/> {successMsg}</div>}
+            {successMsg && <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 text-xs font-bold rounded-xl flex items-center gap-2"><Mail size={14} /> {successMsg}</div>}
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
             <Button variant="outline" onClick={() => setIsInviteModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">

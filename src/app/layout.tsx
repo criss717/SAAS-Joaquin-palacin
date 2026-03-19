@@ -31,7 +31,7 @@ export default function RootLayout({
       >
         <NextAuthProvider>
           <Navbar />
-          <main className="flex-1 w-full flex flex-col">{children}</main>
+          <main className="flex-1 w-full flex flex-col pt-15">{children}</main>
         </NextAuthProvider>
       </body>
     </html>

@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏗️ Joaquin Palacin Project Manager
 
-## Getting Started
+Una plataforma de gestión de proyectos industrial y logística de alto rendimiento, diseñada para la máxima eficiencia en el seguimiento de ensambles, piezas y tiempos.
 
-First, run the development server:
+![Next.js 15](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react)
+![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?style=for-the-badge&logo=tailwind-css)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Funcionalidades Principales
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 📋 Tablero Kanban Avanzado
+*   **Gestión de Sub-tareas**: Seguimiento detallado de piezas dentro de grandes ensambles con barras de progreso reactivas.
+*   **Drag & Drop Fluido**: Movimiento intuitivo de tareas entre etapas con sincronización de estado automática.
+*   **Filtros Inteligentes**: Buscador integrado y filtrado por estado operativo en tiempo real.
+*   **Creación Contextual**: Botones rápidos por columna que pre-seleccionan la etapa del flujo.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 📊 Diagrama de Gantt Dinámico (Estilo Odoo)
+*   **Agrupación Multifactor**: Visualiza el cronograma agrupado por **Etapa**, **Estado** o **Operario Responsable**.
+*   **Interacción Directa**: Modifica fechas arrastrando barras de tareas o ensambles directamente en el diagrama.
+*   **Sincronización Total**: Cualquier cambio en el Kanban (marcar como listo, cambiar progreso) se refleja al instante en el Gantt.
+*   **Diseño Optimizado**: Interfaz limpia que prioriza el área de tiempo, ocultando columnas innecesarias y centrando los datos clave.
 
-## Learn More
+### 🛡️ Seguridad y Arquitectura
+*   **Stack Moderno**: Implementado sobre **Next.js 15 App Router** y **React 19**.
+*   **Acciones Seguras**: Validación de esquemas con **Zod** en todas las Server Actions.
+*   **Base de Datos Robusta**: Integración con PostgreSQL mediante **Prisma ORM**.
+*   **UI Premium**: Componentes de alta calidad con **Shadcn UI** y **Tailwind CSS v4**.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🛠️ Instalación y Configuración
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1.  **Clonar el repositorio:**
+    ```bash
+    git clone https://github.com/criss717/SAAS-Joaquin-palacin.git
+    cd SAAS-Joaquin-palacin
+    ```
 
-## Deploy on Vercel
+2.  **Instalar dependencias:**
+    ```bash
+    npm install
+    ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3.  **Configurar variables de entorno:**
+    Crea un archivo `.env` en la raíz (usa `.env.example` como guía):
+    ```env
+    DATABASE_URL="vuestra-url-de-base-de-datos"
+    ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4.  **Preparar la base de datos:**
+    ```bash
+    npx prisma generate
+    npx prisma db push
+    ```
+
+5.  **Ejecutar en desarrollo:**
+    ```bash
+    npm run dev
+    ```
+
+---
+
+## 👨‍💻 Desarrollo
+
+El proyecto sigue estándares de **Código Limpio** y **Seguridad (OWASP)**. Las contribuciones deben mantener el tipado estricto de TypeScript y la arquitectura de componentes del servidor.
+
+---
+*Desarrollado con ❤️ para Joaquin Palacin.*

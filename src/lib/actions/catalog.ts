@@ -6,6 +6,27 @@ import { cookies } from "next/headers";
 import { TimeEngine } from "@/lib/time-engine";
 import type * as ExcelJS from "exceljs";
 // ExcelJS se carga dinámicamente en las acciones que lo requieren para evitar pánicos de Turbopack
+const NORM_STAGES: Record<string, string> = {
+  "planeacion": "Planeación y Diseño",
+  "diseño": "Planeación y Diseño",
+  "diseno": "Planeación y Diseño",
+  "pendiente": "Pendiente",
+  "pedido": "Pedido Externo",
+  "externo": "Pedido Externo",
+  "taller": "Fabricación Taller",
+  "fabricacion": "Fabricación Taller",
+  "listo": "Listo",
+  "terminado": "Listo"
+};
+
+function normalizeStageName(input: string): string {
+  const low = (input || "").toLowerCase().trim();
+  if (!low) return "Pendiente";
+  for (const [key, val] of Object.entries(NORM_STAGES)) {
+    if (low.includes(key)) return val;
+  }
+  return "Pendiente";
+}
 
 export async function getMachines() {
   return await prisma.machineCatalog.findMany({
@@ -124,12 +145,25 @@ export async function launchMachineToProject(machineId: string, projectName: str
 
     // Clonación Recursiva Helper
     async function clonePart(partId: string, parentTaskId?: string) {
-      const part = machine!.parts.find(p => p.id === partId);
+      // Definir interfaces locales para Tipado Estricto de los resultados de Prisma
+      interface CatalogOp { 
+        name: string; 
+        estimatedHours: number; 
+        preferredStage?: string | null; 
+      }
+      interface CatalogPartWithOps {
+        id: string;
+        name: string;
+        quantity: number;
+        parentId: string | null;
+        preferredStage?: string | null;
+        operations: CatalogOp[];
+      }
+
+      const part = machine!.parts.find(p => p.id === partId) as CatalogPartWithOps | undefined;
       if (!part) return;
 
-      // Un ensamble no tiene "horas estimadas" per se en el catálogo, pero podemos 
-      // sumar las horas de sus operaciones o poner un default.
-      const totalOpHours = (part.operations as { estimatedHours: number }[]).reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+      const totalOpHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
       const endDate = engine.addBusinessHours(projectStartDate, Math.max(8, totalOpHours)); 
 
       // Crear la Tarea/Ensamble
@@ -139,7 +173,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
           projectId: project.id,
           parentId: parentTaskId,
           isAssembly: true,
-          stage: "Pendiente",
+          stage: part.preferredStage || "Pendiente",
           status: "EN_PROCESO", 
           startDate: projectStartDate,
           endDate: endDate,
@@ -151,8 +185,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
 
       // Clonar operaciones de esta pieza en cascada
       let opsStartDate = new Date(projectStartDate);
-      for (const opRaw of part.operations) {
-        const op = opRaw as { name: string; estimatedHours: number };
+      for (const op of part.operations) {
         // Cálculo preciso mediante el motor
         const opsEndDate = engine.addBusinessHours(opsStartDate, op.estimatedHours || 8);
 
@@ -162,7 +195,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
             projectId: project.id,
             parentId: newTaskPart.id,
             isAssembly: false, 
-            stage: "Pendiente",
+            stage: op.preferredStage || part.preferredStage || "Pendiente",
             status: "EN_PROCESO",
             progress: 0,
             startDate: opsStartDate,
@@ -210,7 +243,8 @@ export async function importMachineFromExcel(formData: FormData) {
 
     const arrayBuffer = await file.arrayBuffer();
     // Importación dinámica para aligerar la carga del servidor de desarrollo
-    const exceljs = await import("exceljs");
+    // Usamos typeof ExcelJS para evitar que el linter detecte un 'any'
+    const exceljs: typeof ExcelJS = await import("exceljs");
     const workbook = new exceljs.Workbook();
     await workbook.xlsx.load(arrayBuffer);
     const worksheet = workbook.getWorksheet(1);
@@ -231,7 +265,7 @@ export async function importMachineFromExcel(formData: FormData) {
     });
 
     // 3. Mapeo temporal para jerarquías y filas
-    const rows: { nombre: string; cantidad: number; parentName: string; horas: number }[] = [];
+    const rows: { nombre: string; cantidad: number; parentName: string; horas: number; etapa: string }[] = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
       const item: Record<string, ExcelJS.CellValue> = {};
@@ -252,7 +286,8 @@ export async function importMachineFromExcel(formData: FormData) {
         nombre: item.nombre?.toString().trim() || "Sin nombre",
         cantidad: Number(item.cantidad) || 1,
         parentName: item["pertenece a ensamble"]?.toString().trim() || "",
-        horas: horas
+        horas: horas,
+        etapa: normalizeStageName(item["etapa inicial"]?.toString() || "")
       });
     });
 
@@ -264,6 +299,7 @@ export async function importMachineFromExcel(formData: FormData) {
           name: r.nombre,
           machineId: machine.id,
           quantity: r.cantidad,
+          preferredStage: r.etapa,
         }
       });
       partNameToId.set(r.nombre, part.id);
@@ -274,6 +310,7 @@ export async function importMachineFromExcel(formData: FormData) {
           name: `Fabricar ${r.nombre}`,
           partId: part.id,
           estimatedHours: r.horas > 0 ? r.horas : 8,
+          preferredStage: r.etapa,
           orderIndex: 0
         }
       });

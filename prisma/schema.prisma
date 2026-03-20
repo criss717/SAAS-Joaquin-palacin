@@ -133,6 +133,7 @@ model CatalogPart {
   subParts    CatalogPart[]  @relation("CatalogSubParts")
   
   quantity    Int            @default(1) 
+  preferredStage String?  // Etapa inicial deseada (ej: "Pedido Externo")
   
   operations  CatalogOperation[]
 }
@@ -148,6 +149,7 @@ model CatalogOperation {
   part           CatalogPart @relation(fields: [partId], references: [id], onDelete: Cascade)
   
   estimatedHours Float    @default(8)   // Evolución a ERP para medir con precisión
+  preferredStage String?  // Etapa inicial deseada para esta operación (ej: "Pedido Externo")
   orderIndex     Int      @default(0)
 }
 

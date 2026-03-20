@@ -42,6 +42,7 @@ export function Navbar({ projects = [], activeProjectId = null }: { projects?: M
               {navLink("/", "Tablero Kanban")}
               {navLink("/gantt", "Gantt")}
               {session.user?.role === "ADMIN" && navLink("/catalog", "Catálogo")}
+              {session.user?.role === "ADMIN" && navLink("/admin/schedule", "Calendario")}
               {session.user?.role === "ADMIN" && navLink("/admin", "Administración")}
             </div>
           )}

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, type TaskWithRelations, type TaskAssignee } from "@/lib/actions/tasks";
-import { Calendar, Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent } from "lucide-react";
+import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent } from "lucide-react";
 import { TaskStatus } from "@prisma/client";
 
 type Stage = { id: string; name: string; color: string }
@@ -22,21 +22,20 @@ type Props = {
   onTaskUpdated: (updated: TaskWithRelations) => void
 }
 
-/** Convierte un Date o string ISO a input[type=date] value (YYYY-MM-DD, UTC) */
-function toDateInputValue(d: Date | string): string {
+/** Convierte un Date o string ISO a input[type=datetime-local] value (YYYY-MM-DDTHH:mm) */
+function toDateTimeLocalValue(d: Date | string): string {
   try {
     const date = new Date(d)
     if (isNaN(date.getTime())) return ""
-    // Usamos ISO para mantener UTC y evitar desfase de zona horaria
-    return date.toISOString().split("T")[0]
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
   } catch {
     return ""
   }
 }
 
-/** Construye un Date a mediodía UTC para evitar desfases de timezone */
-function fromDateInput(str: string): Date {
-  return new Date(`${str}T12:00:00.000Z`)
+function fromDateTimeInput(str: string): Date {
+  return new Date(str)
 }
 
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated }: Props) {
@@ -44,8 +43,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [selectedStage, setSelectedStage] = useState(task?.stage ?? "");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>(task?.status ?? "EN_PROCESO");
   const [localProgress, setLocalProgress] = useState(task?.progress ?? 0);
-  const [startDate, setStartDate] = useState(() => toDateInputValue(task?.startDate ?? ""));
-  const [endDate, setEndDate] = useState(() => toDateInputValue(task?.endDate ?? ""));
+  const [startDate, setStartDate] = useState(() => toDateTimeLocalValue(task?.startDate ?? ""));
+  const [endDate, setEndDate] = useState(() => toDateTimeLocalValue(task?.endDate ?? ""));
   const [selectedAssignees, setSelectedAssignees] = useState<TaskAssignee[]>(task?.assignees ?? []);
   const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors.map(p => p.predecessor.id) ?? []);
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
@@ -109,10 +108,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
       // Solo actualizar fechas si son válidas (no vacías) y han cambiado
       if (startDate && endDate) {
-        const origStart = toDateInputValue(task.startDate);
-        const origEnd = toDateInputValue(task.endDate);
+        const origStart = toDateTimeLocalValue(task.startDate);
+        const origEnd = toDateTimeLocalValue(task.endDate);
         if (startDate !== origStart || endDate !== origEnd) {
-          updates.push(updateTaskDates(task.id, fromDateInput(startDate), fromDateInput(endDate)));
+          updates.push(updateTaskDates(task.id, fromDateTimeInput(startDate), fromDateTimeInput(endDate)));
         }
       }
 
@@ -140,8 +139,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         stage: selectedStage,
         status: selectedStatus,
         progress: localProgress,
-        startDate: startDate ? fromDateInput(startDate) : task.startDate,
-        endDate: endDate ? fromDateInput(endDate) : task.endDate,
+        startDate: startDate ? fromDateTimeInput(startDate) : task.startDate,
+        endDate: endDate ? fromDateTimeInput(endDate) : task.endDate,
         assignees: selectedAssignees,
         parentId: parentId,
         predecessors: predecessorIds.map(id => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
@@ -157,7 +156,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
   return (
     <Dialog open={!!task} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">
             {task.isAssembly && (
@@ -200,7 +199,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <button
                     key={val}
                     onClick={() => setLocalProgress(val)}
-                    className={`flex-1 py-1 rounded-md border text-[10px] font-medium transition-all ${localProgress === val ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'}`}
+                    className={`flex-1 py-1 rounded-md border text-[10px] font-medium transition-all cursor-pointer ${localProgress === val ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'}`}
                   >
                     {val}%
                   </button>
@@ -225,13 +224,13 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   value={newSubTaskName}
                   onChange={e => setNewSubTaskName(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && handleCreateSubTask()}
-                  className="h-9 text-sm"
+                  className="h-9 text-sm rounded-xl"
                 />
                 <Button
                   size="sm"
                   onClick={handleCreateSubTask}
                   disabled={!newSubTaskName.trim() || isPending}
-                  className="h-9 px-3"
+                  className="h-9 px-3 rounded-xl cursor-pointer"
                 >
                   <Plus size={16} />
                 </Button>
@@ -254,15 +253,15 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Fechas (Mismo estilo que CreateTaskModal) */}
+            {/* Fechas */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Calendar size={12} /> Inicio</Label>
-                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm h-9" />
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
+                <Input type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Clock size={12} /> Fin</Label>
-                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-9" />
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</Label>
+                <Input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
             </div>
           </div>
@@ -283,7 +282,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     <button
                       key={status.id}
                       onClick={() => handleStatusChange(status.id as TaskStatus)}
-                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${selectedStatus === status.id
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${selectedStatus === status.id
                         ? `${status.bg} ${status.color} border-blue-400 shadow-sm`
                         : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200'
                         }`}
@@ -302,7 +301,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     <button
                       key={s.id}
                       onClick={() => setSelectedStage(s.name)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${selectedStage === s.name
+                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${selectedStage === s.name
                         ? "bg-blue-50 border-blue-400 text-blue-700 shadow-sm"
                         : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
                         }`}
@@ -324,14 +323,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                       {a.name.charAt(0)}
                     </div>
                     <span className="text-[10px] font-medium text-gray-700">{a.name.split(" ")[0]}</span>
-                    <button onClick={() => setSelectedAssignees(prev => prev.filter(p => p.id !== a.id))} className="text-gray-300 hover:text-red-500 transition-colors">
+                    <button onClick={() => setSelectedAssignees(prev => prev.filter(p => p.id !== a.id))} className="text-gray-300 hover:text-red-500 transition-colors cursor-pointer">
                       <X size={10} />
                     </button>
                   </div>
                 ))}
                 <button
                   onClick={() => setShowUserPicker(v => !v)}
-                  className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:bg-blue-50 rounded-lg px-2 py-1 border border-dashed border-blue-200 transition-all"
+                  className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:bg-blue-50 rounded-lg px-2 py-1 border border-dashed border-blue-200 transition-all cursor-pointer"
                 >
                   <Plus size={12} /> Añadir
                 </button>
@@ -343,7 +342,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     <button
                       key={u.id}
                       onClick={() => { toggleAssignee(u); setShowUserPicker(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2 hover:bg-blue-50 text-left transition-colors border-b last:border-0 border-gray-50"
+                      className="flex items-center gap-3 w-full px-4 py-2 hover:bg-blue-50 text-left transition-colors border-b last:border-0 border-gray-50 cursor-pointer"
                     >
                       <div className="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
                         {u.name.charAt(0)}
@@ -366,7 +365,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1">
                 <button
                   onClick={() => setParentId(null)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${parentId === null
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === null
                     ? "bg-purple-50 border-purple-300 text-purple-700"
                     : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
                     }`}
@@ -378,7 +377,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <button
                     key={t.id}
                     onClick={() => setParentId(t.id)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${parentId === t.id
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id
                       ? "bg-purple-50 border-purple-300 text-purple-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
                     }`}
@@ -403,7 +402,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <button
                     key={t.id}
                     onClick={() => setPredecessorIds(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${predecessorIds.includes(t.id)
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${predecessorIds.includes(t.id)
                       ? "bg-blue-50 border-blue-300 text-blue-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"
                     }`}
@@ -423,10 +422,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         <Separator className="bg-gray-100" />
 
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
+          <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl cursor-pointer">
             Cerrar sin guardar
           </Button>
-          <Button onClick={handleSave} disabled={isPending}>
+          <Button onClick={handleSave} disabled={isPending} className="rounded-xl bg-blue-600 text-white font-bold px-6 shadow-lg shadow-blue-100 cursor-pointer">
             {isPending ? "Guardando..." : "Guardar Cambios"}
           </Button>
         </div>

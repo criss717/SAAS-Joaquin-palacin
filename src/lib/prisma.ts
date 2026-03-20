@@ -8,11 +8,18 @@ const prismaClientSingleton = () => {
 
 declare global {
   var prisma: undefined | ReturnType<typeof prismaClientSingleton>
+  var prismaVersion: number | undefined
 }
 
-const prisma = globalThis.prisma ?? prismaClientSingleton()
+const SCHEMA_VERSION = 4; // Incrementamos para forzar recarga tras cambio de Holiday (startDate)
+
+const prisma = (globalThis.prisma && globalThis.prismaVersion === SCHEMA_VERSION && 'workSchedule' in globalThis.prisma) 
+  ? globalThis.prisma 
+  : prismaClientSingleton()
 
 export default prisma
 
-if (process.env.NODE_ENV !== 'production') globalThis.prisma = prisma
-// Forzar recarga tras cambio de esquema
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.prisma = prisma
+  globalThis.prismaVersion = SCHEMA_VERSION
+}

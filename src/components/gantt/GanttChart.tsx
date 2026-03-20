@@ -136,6 +136,7 @@ export function GanttChart({ initialTasks }: Props) {
   }
 
   const viewButtons: { label: string; mode: ViewMode }[] = [
+    { label: "Hora", mode: ViewMode.Hour },
     { label: "Día", mode: ViewMode.Day },
     { label: "Semana", mode: ViewMode.Week },
     { label: "Mes", mode: ViewMode.Month },
@@ -212,7 +213,7 @@ export function GanttChart({ initialTasks }: Props) {
             locale="es"
             fontFamily="var(--font-outfit), Inter, sans-serif"
             listCellWidth="200px"
-            columnWidth={viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : 70}
+            columnWidth={viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : viewMode === ViewMode.Day ? 70 : 60}
             headerHeight={50}
             rowHeight={45}
             barCornerRadius={6}

@@ -52,7 +52,7 @@ export async function deleteCatalogPart(id: string, machineId: string) {
 
 // ----------------- GESTIÓN DE OPERACIONES (MANO DE OBRA) -----------------
 
-export async function createCatalogOperation(data: { name: string; partId: string; estimatedDays?: number; machineId: string }) {
+export async function createCatalogOperation(data: { name: string; partId: string; estimatedHours?: number; machineId: string }) {
   try {
     // Calcular el próximo orderIndex
     const lastOp = await prisma.catalogOperation.findFirst({
@@ -64,7 +64,7 @@ export async function createCatalogOperation(data: { name: string; partId: strin
       data: {
         name: data.name,
         partId: data.partId,
-        estimatedDays: data.estimatedDays || 1,
+        estimatedHours: data.estimatedHours || 8,
         orderIndex: (lastOp?.orderIndex ?? -1) + 1
       },
     });

@@ -55,6 +55,7 @@ model Task {
   
   assignees    TaskAssignee[]  // Múltiples operarios asignados
   
+  estimatedHours Float?         @default(8) // Evolución a ERP por horas
   startDate    DateTime
   endDate      DateTime
   
@@ -145,6 +146,37 @@ model CatalogOperation {
   partId         String
   part           CatalogPart @relation(fields: [partId], references: [id], onDelete: Cascade)
   
-  estimatedDays  Int      @default(1)
+  estimatedHours Float    @default(8)   // Evolución a ERP para medir con precisión
   orderIndex     Int      @default(0)
+}
+
+// ----------------------------------------------------------------------
+// MÓDULO DE RECURSOS HUMANOS / CONTROL DE HORARIOS DE TRABAJO
+// ----------------------------------------------------------------------
+
+/**
+ * Temporadas de horario de planta (ej. Invierno vs Verano).
+ * Permite que el Gantt sepa cuántas horas tiene un día.
+ */
+model WorkSchedule {
+  id          String   @id @default(uuid())
+  name        String   // Ej: "Horario Verano 2026"
+  validFrom   DateTime // Fecha de inicio de validez
+  validUntil  DateTime // Fecha de fin de validez
+  workingDays String   @default("[1,2,3,4,5]") // JSON array e.g. 1=Lun
+  shifts      String   @default("[{\"start\": \"08:00\", \"end\": \"14:00\"}, {\"start\": \"16:00\", \"end\": \"18:00\"}]") // Json 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/**
+ * Días festivos (Ferias, Navidades) de un año. 
+ * El calculador de Gantt los saltará.
+ */
+model Holiday {
+  id          String   @id @default(uuid())
+  name        String   // Ej: "Feria de Abril"
+  startDate   DateTime // Inicio del festivo
+  endDate     DateTime? // Fin del festivo (opcional, si es de un solo día)
+  createdAt   DateTime @default(now())
 }

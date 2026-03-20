@@ -107,7 +107,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           />
         </div>
         <div className="flex gap-2 ml-auto">
-          <div className="w-[180px]">
+          <div className="w-[190px]">
             <Select
               value={filterAssignee}
               onValueChange={(v) => setFilterAssignee(v ?? "")}
@@ -175,7 +175,6 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
                 className="flex gap-4 overflow-x-auto pb-4 h-full"
               >
                 {stages.map((column, colIndex) => {
-                  console.log(column.color)
                   const columnTasks = tasks.filter(t =>
                     t.stage === column.name &&
                     (filterStatus === "" || t.status === filterStatus) &&
@@ -204,7 +203,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
                             <GripVertical size={14} className="text-gray-300 shrink-0" />
                             <h3 className="font-semibold text-gray-800 text-sm flex-1">{column.name}</h3>
                             <span
-                              className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                              className="text-xs font-bold w-6 h-6 rounded-full text-white flex items-center justify-center"
                               style={{ backgroundColor: column.color }}
                             >
                               {columnTasks.length}

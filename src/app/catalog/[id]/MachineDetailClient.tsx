@@ -11,7 +11,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 
-export type Operation = { id: string; name: string; estimatedDays: number; orderIndex: number; partId: string };
+export type Operation = { id: string; name: string; estimatedHours: number; orderIndex: number; partId: string };
 export interface Part {
   id: string;
   name: string;
@@ -72,11 +72,11 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
   const handleCreateOp = async () => {
     if (!name.trim() || !selectedPartId) return;
     setLoading(true);
-    const res = await createCatalogOperation({ name, machineId: machine.id, partId: selectedPartId, estimatedDays: qtyOrDays });
+    const res = await createCatalogOperation({ name, machineId: machine.id, partId: selectedPartId, estimatedHours: qtyOrDays });
     if (res.success && res.op) {
       setMachine(prev => ({
         ...prev,
-        parts: prev.parts.map(p => p.id === selectedPartId ? { ...p, operations: [...p.operations, res.op as Operation] } : p)
+        parts: prev.parts.map(p => p.id === selectedPartId ? { ...p, operations: [...p.operations, res.op as unknown as Operation] } : p)
       }));
       setIsOpModalOpen(false);
       toast.success("Operación guardada.");
@@ -163,7 +163,7 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
                 <div className="flex items-center gap-2">
                   <Wrench size={14} className="text-gray-400" />
                   <span className="text-sm font-semibold text-gray-700">{op.name}</span>
-                  <span className="text-xs text-gray-500 bg-white border border-gray-200 px-1.5 rounded">{op.estimatedDays} d.</span>
+                  <span className="text-xs text-gray-500 bg-white border border-gray-200 px-1.5 rounded">{op.estimatedHours} h.</span>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => delOp(op.id, part.id)} className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 hover:bg-red-50 transition-opacity cursor-pointer">
                   <Trash2 size={12} />
@@ -237,7 +237,7 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
               <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Torneado Final" className="h-10 border-gray-200 rounded-xl" autoFocus />
             </div>
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-600 uppercase">Días Estimados</Label>
+              <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
               <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
             </div>
           </div>

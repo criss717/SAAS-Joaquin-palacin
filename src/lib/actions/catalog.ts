@@ -3,6 +3,7 @@
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { TimeEngine } from "@/lib/time-engine";
 
 export async function getMachines() {
   return await prisma.machineCatalog.findMany({
@@ -59,7 +60,28 @@ export async function launchMachineToProject(machineId: string, projectName: str
 
     if (!machine) return { success: false, error: "Máquina no encontrada." };
 
-    // 2. Crear el Proyecto Base y sus Etapas Kanban estándar
+    // 2. Obtener configuración de horarios y festivos
+    let schedules = await prisma.workSchedule.findMany({ orderBy: { validFrom: "asc" } });
+    const holidays = await prisma.holiday.findMany();
+
+    // Si no hay horarios definidos, crear uno básico por defecto (8 a 14 y 16 a 18)
+    if (schedules.length === 0) {
+      const defaultSchedule = await prisma.workSchedule.create({
+        data: {
+          name: "Horario General (Default)",
+          validFrom: new Date("2020-01-01"),
+          validUntil: new Date("2050-12-31"),
+          workingDays: "[1,2,3,4,5]",
+          shifts: JSON.stringify([{ start: "08:00", end: "14:00" }, { start: "16:00", end: "18:00" }])
+        }
+      });
+      schedules = [defaultSchedule];
+    }
+
+    // Inicializar Motor de Tiempo
+    const engine = new TimeEngine(schedules, holidays);
+
+    // 3. Crear el Proyecto Base y sus Etapas Kanban estándar
     const project = await prisma.project.create({
       data: {
         name: projectName,
@@ -75,7 +97,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
       }
     });
 
-    // 3. Diccionario temporal para mapear IDs originales de CatalogPart a los nuevos IDs de Task
+    // 4. Diccionario temporal para mapear IDs originales de CatalogPart a los nuevos IDs de Task
     const partIdToTaskId = new Map<string, string>();
     const today = new Date();
     today.setHours(8, 0, 0, 0); // Inicio estándar a las 08:00 AM
@@ -85,8 +107,10 @@ export async function launchMachineToProject(machineId: string, projectName: str
       const part = machine!.parts.find(p => p.id === partId);
       if (!part) return;
 
-      const endDate = new Date(today);
-      endDate.setDate(endDate.getDate() + 5); // Estimado básico para ensambles
+      // Un ensamble no tiene "horas estimadas" per se en el catálogo, pero podemos 
+      // sumar las horas de sus operaciones o poner un default.
+      const totalOpHours = (part.operations as { estimatedHours: number }[]).reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+      const endDate = engine.addBusinessHours(today, Math.max(8, totalOpHours)); 
 
       // Crear la Tarea/Ensamble
       const newTaskPart = await prisma.task.create({
@@ -96,10 +120,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
           parentId: parentTaskId,
           isAssembly: true,
           stage: "Pendiente",
-          status: "EN_PROCESO", // Estado inicial
+          status: "EN_PROCESO", 
           progress: 0,
           startDate: today,
           endDate: endDate,
+          estimatedHours: totalOpHours || 8,
         }
       });
       
@@ -107,26 +132,28 @@ export async function launchMachineToProject(machineId: string, projectName: str
 
       // Clonar operaciones de esta pieza
       let opsStartDate = new Date(today);
-      for (const op of part.operations) {
-        const opsEndDate = new Date(opsStartDate);
-        opsEndDate.setDate(opsEndDate.getDate() + Math.max(1, op.estimatedDays));
+      for (const opRaw of part.operations) {
+        const op = opRaw as { name: string; estimatedHours: number };
+        // Cálculo preciso mediante el motor
+        const opsEndDate = engine.addBusinessHours(opsStartDate, op.estimatedHours || 8);
 
         await prisma.task.create({
           data: {
             name: op.name,
             projectId: project.id,
             parentId: newTaskPart.id,
-            isAssembly: false, // ¡Es mano de obra!
+            isAssembly: false, 
             stage: "Pendiente",
             status: "EN_PROCESO",
             progress: 0,
-            startDate: new Date(opsStartDate),
-            endDate: new Date(opsEndDate),
+            startDate: opsStartDate,
+            endDate: opsEndDate,
+            estimatedHours: op.estimatedHours,
           }
         });
         
         // La siguiente operación empieza cuando termina esta (cascada simple)
-        opsStartDate = new Date(opsEndDate);
+        opsStartDate = opsEndDate;
       }
 
       // Clonar piezas hijas recursivamente

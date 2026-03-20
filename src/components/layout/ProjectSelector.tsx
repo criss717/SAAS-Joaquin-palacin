@@ -45,21 +45,41 @@ export function ProjectSelector({
   };
 
   const handleCreateNew = async () => {
-    const { value: name } = await Swal.fire({
+    const { value: formValues } = await Swal.fire({
       title: "Nuevo Proyecto",
-      input: "text",
-      inputPlaceholder: "Escribe el nombre del proyecto...",
+      html: `
+        <div class="space-y-4 text-left">
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre del Proyecto</label>
+            <input id="swal-name" class="swal2-input m-0! w-full!" placeholder="Nombre..." autoFocus>
+          </div>
+          <div class="mt-4">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha de Inicio del Trabajo</label>
+            <input id="swal-date" type="date" class="swal2-input m-0! w-full!" value="${new Date().toISOString().split('T')[0]}">
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
       showCancelButton: true,
       confirmButtonText: "Crear",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#2563eb",
+      preConfirm: () => {
+        const name = (document.getElementById('swal-name') as HTMLInputElement).value;
+        const date = (document.getElementById('swal-date') as HTMLInputElement).value;
+        if (!name || !name.trim()) {
+          Swal.showValidationMessage('El nombre es obligatorio');
+          return false;
+        }
+        return { name: name.trim(), startDate: new Date(date) };
+      }
     });
 
-    if (!name || !name.trim()) return;
+    if (!formValues) return;
     
     setOpen(false);
     setLoading(true);
-    const res = await createEmptyProject(name.trim());
+    const res = await createEmptyProject(formValues.name, formValues.startDate);
     if (res.success) {
       toast.success("Proyecto creado y seleccionado con éxito.");
     } else {

@@ -60,7 +60,7 @@ export async function getTasksByProject(projectId: string): Promise<TaskWithRela
   return tasks.map(t => ({
     ...t,
     assignees: t.assignees.map(a => ({ id: a.user.id, name: a.user.name })),
-  })) as unknown as TaskWithRelations[]
+  })) as TaskWithRelations[]
 }
 
 /** Actualiza el estado manual de una tarea */
@@ -174,7 +174,7 @@ export async function createTask(data: {
   // Sí revalidamos "/" porque hay una tarea nueva que deben ver todos
   revalidatePath("/")
   revalidatePath("/gantt")
-  return flattenedTask as unknown as TaskWithRelations
+  return flattenedTask as TaskWithRelations
 }
 
 /** Crea un nuevo proyecto — solo ADMIN */

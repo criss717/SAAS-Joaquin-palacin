@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createMachine, deleteMachine, launchMachineToProject } from "@/lib/actions/catalog";
-import { Plus, Trash2, Settings, ChevronRight, Play } from "lucide-react";
+import { createMachine, deleteMachine, launchMachineToProject, importMachineFromExcel, updateMachine } from "@/lib/actions/catalog";
+import { Plus, Trash2, Settings, ChevronRight, Play, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   const [projectName, setProjectName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [launchStartDate, setLaunchStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   const handleOpenLaunch = (machineId: string) => {
     setSelectedMachineToLaunch(machineId);
@@ -39,7 +40,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   const handleLaunch = async () => {
     if (!selectedMachineToLaunch || !projectName.trim()) return;
     setLoading(true);
-    const res = await launchMachineToProject(selectedMachineToLaunch, projectName);
+    const res = await launchMachineToProject(selectedMachineToLaunch, projectName, new Date(launchStartDate));
     if (res.success) {
       setIsLaunchModalOpen(false);
       toast.success(`Máquina lanzada con éxito`);
@@ -49,6 +50,70 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
       setLoading(false);
     }
   };
+
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await importMachineFromExcel(formData);
+    if (res.success && res.machine) {
+      setMachines([{ ...res.machine, _count: { parts: 0 } }, ...machines]);
+      toast.success(`Catálogo "${res.machine.name}" importado correctamente.`);
+    } else {
+      toast.error(res.error || "Error al importar Excel");
+    }
+    setLoading(false);
+    e.target.value = ""; // Reset input
+  };
+
+  const handleEdit = async (machine: Machine) => {
+    const { value: formValues } = await Swal.fire({
+      title: "Editar Máquina",
+      html: `
+        <div class="space-y-4 text-left">
+          <div class="mt-2">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre</label>
+            <input id="swal-edit-name" class="swal2-input m-0! w-full!" value="${machine.name}" placeholder="Nombre...">
+          </div>
+          <div class="mt-4">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
+            <input id="swal-edit-desc" class="swal2-input m-0! w-full!" value="${machine.description || ""}" placeholder="Descripción...">
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: "Guardar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#2563eb",
+      preConfirm: () => {
+        const name = (document.getElementById('swal-edit-name') as HTMLInputElement).value;
+        const desc = (document.getElementById('swal-edit-desc') as HTMLInputElement).value;
+        if (!name || !name.trim()) {
+          Swal.showValidationMessage('El nombre es obligatorio');
+          return false;
+        }
+        return { name: name.trim(), description: desc.trim() };
+      }
+    });
+
+    if (formValues) {
+      setLoading(true);
+      const res = await updateMachine(machine.id, formValues.name, formValues.description);
+      if (res.success) {
+        setMachines(machines.map(m => m.id === machine.id ? { ...m, name: formValues.name, description: formValues.description } : m));
+        toast.success("Máquina actualizada correctamente.");
+      } else {
+        toast.error(res.error || "Error al actualizar");
+      }
+      setLoading(false);
+    }
+  };
+
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -93,9 +158,15 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
         <div className="text-sm text-gray-500">
           Plantillas disponibles: <strong>{machines.length}</strong>
         </div>
-        <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl ">
-          <Plus size={16} className="mr-2" /> Nueva Máquina
-        </Button>
+        <div className="flex gap-2">
+          <input type="file" id="excel-import" className="hidden" accept=".xlsx" onChange={handleExcelImport} />
+          <Button variant="outline" onClick={() => document.getElementById('excel-import')?.click()} disabled={loading} className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 rounded-xl font-bold">
+            Importar Excel
+          </Button>
+          <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl ">
+            <Plus size={16} className="mr-2" /> Nueva Máquina
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -105,9 +176,14 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
               <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
                 <Settings size={24} />
               </div>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(machine.id, machine.name)} className="text-gray-400 hover:text-red-600 hover:bg-red-50">
-                <Trash2 size={16} />
-              </Button>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="icon" onClick={() => handleEdit(machine)} className="text-gray-400 hover:text-blue-600 hover:bg-blue-50">
+                  <Edit2 size={16} />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(machine.id, machine.name)} className="text-gray-400 hover:text-red-600 hover:bg-red-50">
+                  <Trash2 size={16} />
+                </Button>
+              </div>
             </div>
 
             <h3 className="text-lg font-bold text-gray-900 mb-1">{machine.name}</h3>
@@ -173,8 +249,12 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
               <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre del Proyecto</Label>
               <Input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Ej: Decanter Cliente Amazon" className="h-10 border-gray-200 rounded-xl" autoFocus />
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha de Inicio del Trabajo</Label>
+              <Input type="date" value={launchStartDate} onChange={e => setLaunchStartDate(e.target.value)} className="h-10 border-gray-200 rounded-xl" />
+            </div>
             <p className="text-xs text-gray-500">
-              Esta acción clonará todas las piezas y operaciones del despiece teórico hacia el tablero Kanban y Gantt real, creando un proyecto nuevo listo para operar.
+              Esta acción clonará todas las piezas y operaciones del despiece teórico hacia el tablero Kanban y Gantt real, calculando el cronograma completo a partir de la fecha seleccionada.
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">

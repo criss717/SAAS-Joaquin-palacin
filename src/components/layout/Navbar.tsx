@@ -24,13 +24,13 @@ export function Navbar({ projects = [], activeProjectId = null }: { projects?: M
   );
 
   return (
-    <nav className="border-b w-full bg-white px-4 py-3 fixed">
+    <nav className="border-b w-full bg-white px-4 py-3 fixed z-100">
       <div className="w-full flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link href="/" className="font-bold text-xl tracking-tight text-gray-900">
             Joaquin<span className="text-blue-600"> Palacin</span>
           </Link>
-          
+
           {session && (
             <div className="ml-4 pl-4 border-l border-gray-200 hidden sm:block">
               <ProjectSelector projects={projects} activeProjectId={activeProjectId} />

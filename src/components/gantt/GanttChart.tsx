@@ -115,7 +115,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 export function GanttChart({ initialTasks }: Props) {
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks);
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
-  const [groupBy, setGroupBy] = useState<GroupByMode>("user");
+  const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
   const ganttTasks = toGanttTasks(tasks, groupBy);
 

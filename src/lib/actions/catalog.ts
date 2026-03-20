@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { TimeEngine } from "@/lib/time-engine";
+import type * as ExcelJS from "exceljs";
+// ExcelJS se carga dinámicamente en las acciones que lo requieren para evitar pánicos de Turbopack
 
 export async function getMachines() {
   return await prisma.machineCatalog.findMany({
@@ -40,12 +42,29 @@ export async function deleteMachine(id: string) {
   }
 }
 
+export async function updateMachine(id: string, name: string, description?: string) {
+  try {
+    await prisma.machineCatalog.update({
+      where: { id },
+      data: { name, description }
+    });
+    revalidatePath("/catalog");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al actualizar la máquina." };
+  }
+}
+
 // -----------------------------------------------------
 // MOTOR DE LANZAMIENTO A PRODUCCIÓN
 // -----------------------------------------------------
 
-export async function launchMachineToProject(machineId: string, projectName: string) {
+export async function launchMachineToProject(machineId: string, projectName: string, startDate: Date) {
   try {
+    const startAt = new Date(startDate);
+    startAt.setHours(8, 0, 0, 0); // Ajustar inicio a las 08:00 AM del día elegido
+
     // 1. Cargar toda la máquina con sus piezas y operaciones
     const machine = await prisma.machineCatalog.findUnique({
       where: { id: machineId },
@@ -85,6 +104,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
     const project = await prisma.project.create({
       data: {
         name: projectName,
+        startDate: startAt,
         stage: "Planeación y Diseño",
         stages: {
           create: [
@@ -100,8 +120,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
 
     // 4. Diccionario temporal para mapear IDs originales de CatalogPart a los nuevos IDs de Task
     const partIdToTaskId = new Map<string, string>();
-    const today = new Date();
-    today.setHours(8, 0, 0, 0); // Inicio estándar a las 08:00 AM
+    const projectStartDate = new Date(startAt);
 
     // Clonación Recursiva Helper
     async function clonePart(partId: string, parentTaskId?: string) {
@@ -111,7 +130,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
       // Un ensamble no tiene "horas estimadas" per se en el catálogo, pero podemos 
       // sumar las horas de sus operaciones o poner un default.
       const totalOpHours = (part.operations as { estimatedHours: number }[]).reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
-      const endDate = engine.addBusinessHours(today, Math.max(8, totalOpHours)); 
+      const endDate = engine.addBusinessHours(projectStartDate, Math.max(8, totalOpHours)); 
 
       // Crear la Tarea/Ensamble
       const newTaskPart = await prisma.task.create({
@@ -122,8 +141,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
           isAssembly: true,
           stage: "Pendiente",
           status: "EN_PROCESO", 
-          progress: 0,
-          startDate: today,
+          startDate: projectStartDate,
           endDate: endDate,
           estimatedHours: totalOpHours || 8,
         }
@@ -131,8 +149,8 @@ export async function launchMachineToProject(machineId: string, projectName: str
       
       partIdToTaskId.set(part.id, newTaskPart.id);
 
-      // Clonar operaciones de esta pieza
-      let opsStartDate = new Date(today);
+      // Clonar operaciones de esta pieza en cascada
+      let opsStartDate = new Date(projectStartDate);
       for (const opRaw of part.operations) {
         const op = opRaw as { name: string; estimatedHours: number };
         // Cálculo preciso mediante el motor
@@ -181,3 +199,101 @@ export async function launchMachineToProject(machineId: string, projectName: str
     return { success: false, error: "Error interno al clonar máquina a producción." };
   }
 }
+
+/**
+ * IMPORTACIÓN MASIVA DESDE EXCEL (ExcelJS)
+ */
+export async function importMachineFromExcel(formData: FormData) {
+  try {
+    const file = formData.get("file") as File;
+    if (!file) return { success: false, error: "No se proporcionó ningún archivo." };
+
+    const arrayBuffer = await file.arrayBuffer();
+    // Importación dinámica para aligerar la carga del servidor de desarrollo
+    const exceljs = await import("exceljs");
+    const workbook = new exceljs.Workbook();
+    await workbook.xlsx.load(arrayBuffer);
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) return { success: false, error: "El Excel está vacío." };
+
+    // 1. Obtener cabeceras y normalizar
+    const headers: string[] = [];
+    worksheet.getRow(1).eachCell((cell, colNumber) => {
+      headers[colNumber] = cell.value?.toString().toLowerCase().trim() || "";
+    });
+
+    // 2. Crear la Máquina Plantilla
+    const machine = await prisma.machineCatalog.create({
+      data: { 
+        name: file.name.replace(".xlsx", ""), 
+        description: `Importado de Excel el ${new Date().toLocaleString()}` 
+      }
+    });
+
+    // 3. Mapeo temporal para jerarquías y filas
+    const rows: { nombre: string; cantidad: number; parentName: string; horas: number }[] = [];
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const item: Record<string, ExcelJS.CellValue> = {};
+      row.eachCell((cell, colNumber) => {
+        const h = headers[colNumber];
+        if (h) item[h] = cell.value;
+      });
+
+      const horasValue = item.horas;
+      let horas = 0;
+      if (horasValue && typeof horasValue === "object" && "result" in (horasValue as ExcelJS.CellFormulaValue)) {
+        horas = Number((horasValue as ExcelJS.CellFormulaValue).result) || 0;
+      } else {
+        horas = Number(horasValue) || 0;
+      }
+
+      rows.push({
+        nombre: item.nombre?.toString().trim() || "Sin nombre",
+        cantidad: Number(item.cantidad) || 1,
+        parentName: item["pertenece a ensamble"]?.toString().trim() || "",
+        horas: horas
+      });
+    });
+
+    // 4. Primera pasada: Crear CatalogPart y guardar IDs por nombre
+    const partNameToId = new Map<string, string>();
+    for (const r of rows) {
+      const part = await prisma.catalogPart.create({
+        data: {
+          name: r.nombre,
+          machineId: machine.id,
+          quantity: r.cantidad,
+        }
+      });
+      partNameToId.set(r.nombre, part.id);
+
+      // Crear operación por defecto "Fabricar [Nombre]"
+      await prisma.catalogOperation.create({
+        data: {
+          name: `Fabricar ${r.nombre}`,
+          partId: part.id,
+          estimatedHours: r.horas > 0 ? r.horas : 8,
+          orderIndex: 0
+        }
+      });
+    }
+
+    // 5. Segunda pasada: Vincular jerarquías
+    for (const r of rows) {
+      if (r.parentName && partNameToId.has(r.parentName)) {
+        await prisma.catalogPart.update({
+          where: { id: partNameToId.get(r.nombre) },
+          data: { parentId: partNameToId.get(r.parentName) }
+        });
+      }
+    }
+
+    revalidatePath("/catalog");
+    return { success: true, machine };
+  } catch (error) {
+    console.error("Excel Import Error:", error);
+    return { success: false, error: "Error procesando el archivo Excel." };
+  }
+}
+

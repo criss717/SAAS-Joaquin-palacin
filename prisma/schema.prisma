@@ -33,6 +33,7 @@ model Project {
   id        String   @id @default(uuid())
   name      String
   stage     String   @default("Planeación y Diseño") // estado global del proyecto
+  startDate DateTime @default(now()) // Fecha de inicio prevista para el trabajo
   createdAt DateTime @default(now())
   tasks     Task[]
   stages    Stage[]  // columnas Kanban del proyecto

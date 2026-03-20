@@ -32,7 +32,7 @@ model User {
 model Project {
   id        String   @id @default(uuid())
   name      String
-  stage     String   @default("Planeación") // estado global del proyecto
+  stage     String   @default("Planeación y Diseño") // estado global del proyecto
   createdAt DateTime @default(now())
   tasks     Task[]
   stages    Stage[]  // columnas Kanban del proyecto

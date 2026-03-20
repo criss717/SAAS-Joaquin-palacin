@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createMachine, deleteMachine, launchMachineToProject } from "@/lib/actions/catalog";
 import { Plus, Trash2, Settings, ChevronRight, Play } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ type Machine = {
 };
 
 export function CatalogClient({ initialMachines }: { initialMachines: Machine[] }) {
+  const router = useRouter();
   const [machines, setMachines] = useState(initialMachines);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
@@ -40,13 +42,12 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     const res = await launchMachineToProject(selectedMachineToLaunch, projectName);
     if (res.success) {
       setIsLaunchModalOpen(false);
-      toast.success(`Máquina lanzada a producción con éxito (ID: ${res.projectId})`);
-      // Redirigir al inicio para ver el nuevo tablero Kanban interactivo
-      window.location.href = "/";
+      toast.success(`Máquina lanzada con éxito`);
+      router.push("/");
     } else {
       toast.error(res.error || "Error clonando máquina");
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleCreate = async () => {
@@ -180,7 +181,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
             <Button variant="outline" onClick={() => setIsLaunchModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">
               Cancelar
             </Button>
-            <Button onClick={handleLaunch} disabled={loading || !projectName} className="rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200">
+            <Button onClick={handleLaunch} disabled={loading || !projectName} className="rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white ">
               {loading ? "Clonando..." : "Confirmar Lanzamiento"}
             </Button>
           </div>

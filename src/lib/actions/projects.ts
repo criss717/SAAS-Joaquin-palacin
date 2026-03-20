@@ -17,13 +17,14 @@ export async function createEmptyProject(name: string) {
     const project = await prisma.project.create({
       data: {
         name,
-        stage: "Planeación",
+        stage: "Planeación y Diseño",
         stages: {
           create: [
-            { name: "Planeación", color: "#f59e0b", order: 0 },
+            { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
             { name: "Pendiente", color: "#94a3b8", order: 1 },
-            { name: "En Proceso", color: "#3b82f6", order: 2 },
-            { name: "Listo", color: "#22c55e", order: 3 },
+            { name: "Pedido Externo", color: "#8b5cf6", order: 2 }, // Violeta para distinguir externo
+            { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
+            { name: "Listo", color: "#22c55e", order: 4 },
           ],
         },
       },

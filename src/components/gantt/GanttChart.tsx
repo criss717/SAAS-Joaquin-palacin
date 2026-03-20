@@ -175,7 +175,7 @@ export function GanttChart({ initialTasks }: Props) {
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === mode
+              className={`px-4 py-1.5 cursor-pointer rounded-lg text-xs font-medium transition-all ${viewMode === mode
                 ? "bg-gray-900 text-white shadow-md"
                 : "text-gray-500 hover:bg-gray-50"
                 }`}

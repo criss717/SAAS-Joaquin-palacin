@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, ShieldAlert, ShieldCheck, Mail, User, Trash2, Edit2 } from "lucide-react";
+import Swal from "sweetalert2";
+import { toast } from "sonner";
 
 export function UserClient({ initialUsers, currentUserId }: { initialUsers: UserWithoutPassword[], currentUserId?: string }) {
   const [users, setUsers] = useState(initialUsers);
@@ -81,13 +83,23 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   };
 
   const handleDelete = async (id: string, userName: string) => {
-    if (!confirm(`¿Estás seguro de que quieres eliminar a ${userName}? Esta acción no se puede deshacer.`)) return;
+    const result = await Swal.fire({
+      title: '¿Eliminar Usuario?',
+      text: `¿Estás seguro de que quieres eliminar a ${userName}? Esta acción no se puede deshacer.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: 'Sí, eliminar'
+    });
+    if (!result.isConfirmed) return;
 
     const res = await deleteUser(id);
     if (res.success) {
       setUsers(prev => prev.filter(u => u.id !== id));
+      toast.success("Usuario eliminado correctamente.");
     } else {
-      alert("Error al eliminar el usuario.");
+      toast.error("Error al eliminar el usuario.");
     }
   };
 

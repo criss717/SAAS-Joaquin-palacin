@@ -5,16 +5,22 @@ import { getProjects, getTasksByProject, getUsers } from "@/lib/actions/tasks";
 import { getStagesByProject } from "@/lib/actions/stages";
 import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 
+import { cookies } from "next/headers";
+
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
 
   const projects = await getProjects();
-  const firstProject = projects[0];
-  const [tasks, stages, users] = firstProject
+  const cookieStore = await cookies();
+  const activeProjectId = cookieStore.get("activeProjectId")?.value;
+  
+  const currentProject = projects.find(p => p.id === activeProjectId) || projects[0];
+
+  const [tasks, stages, users] = currentProject
     ? await Promise.all([
-        getTasksByProject(firstProject.id),
-        getStagesByProject(firstProject.id),
+        getTasksByProject(currentProject.id),
+        getStagesByProject(currentProject.id),
         getUsers(),
       ])
     : [[], [], []];
@@ -27,8 +33,8 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Tablero de Producción</h1>
           <p className="text-gray-500 text-sm mt-0.5">
-            {firstProject
-              ? <span>Proyecto: <strong>{firstProject.name}</strong></span>
+            {currentProject
+              ? <span>Proyecto: <strong>{currentProject.name}</strong></span>
               : "No hay proyectos creados aún"}
           </p>
         </div>
@@ -36,6 +42,7 @@ export default async function DashboardPage() {
 
       <div className="flex-1 overflow-hidden">
         <KanbanBoard
+          key={currentProject ? currentProject.id : "empty-board"}
           initialTasks={tasks}
           initialStages={stages}
           users={users}

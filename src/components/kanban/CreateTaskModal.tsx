@@ -6,8 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { createTask, TaskWithRelations } from "@/lib/actions/tasks";
-import { Calendar, Clock, Package, Plus, CheckCircle2, PlayCircle, CheckCheck, GitBranch } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Calendar, Clock, Package, Plus, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check } from "lucide-react";
 import { TaskStatus } from "@prisma/client";
 
 type Stage = { id: string; name: string; color: string }
@@ -146,7 +149,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                   <button
                     key={s.id}
                     onClick={() => setSelectedStage(s.name)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border-2 transition-all ${selectedStage === s.name ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600"}`}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border-2 transition-all cursor-pointer ${selectedStage === s.name ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600"}`}
                   >
                     {s.name}
                   </button>
@@ -179,7 +182,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     <button
                       key={status.id}
                       onClick={() => handleStatusChange(status.id as TaskStatus)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${selectedStatus === status.id
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${selectedStatus === status.id
                         ? `${status.bg} ${status.color} border-blue-400`
                         : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
                         }`}
@@ -210,7 +213,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                       <button
                         key={v}
                         onClick={() => setProgress(v)}
-                        className="px-2 py-1 rounded border border-gray-200 text-xs hover:bg-white bg-transparent font-medium"
+                        className="px-2 py-1 rounded border border-gray-200 text-xs hover:bg-white bg-transparent font-medium cursor-pointer"
                       >
                         {v}%
                       </button>
@@ -236,7 +239,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                   <>
                     <button
                       onClick={() => setParentId(null)}
-                      className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition-all ${parentId === null
+                      className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition-all cursor-pointer ${parentId === null
                         ? "bg-purple-100 border-purple-200 text-purple-800"
                         : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
                         }`}
@@ -248,7 +251,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                       <button
                         key={t.id}
                         onClick={() => setParentId(t.id)}
-                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition-all ${parentId === t.id
+                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition-all cursor-pointer ${parentId === t.id
                           ? "bg-purple-100 border-purple-200 text-purple-800"
                           : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
                           }`}
@@ -297,22 +300,54 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
             {/* Asignados */}
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-gray-700">Asignados (opcional)</Label>
-              <div className="flex flex-wrap gap-2">
-                {users.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => toggleAssignee(u.id)}
-                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs transition-all text-left ${assigneeIds.includes(u.id)
-                      ? "border-blue-400 bg-blue-50 text-blue-700 shadow-sm"
-                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-                      }`}
-                  >
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0 ${assigneeIds.includes(u.id) ? "bg-blue-500" : "bg-gray-400"}`}>
-                      {u.name.charAt(0)}
+              <div className="flex flex-wrap gap-2 items-center">
+                
+                {/* Botón para añadir */}
+                <Popover>
+                  <PopoverTrigger className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-xs font-semibold text-gray-500 hover:text-gray-900 hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer">
+                    <UserPlus size={14} /> Añadir Asignado
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-0 rounded-xl shadow-lg border-gray-100" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar usuario..." className="text-xs h-9" />
+                      <CommandList>
+                        <CommandEmpty className="py-2 px-4 text-xs text-gray-500">No hay usuarios.</CommandEmpty>
+                        <CommandGroup>
+                          {users.map(u => (
+                            <CommandItem
+                              key={u.id}
+                              value={u.name}
+                              onSelect={() => toggleAssignee(u.id)}
+                              className="cursor-pointer text-xs"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold ${assigneeIds.includes(u.id) ? "bg-blue-500" : "bg-gray-400"}`}>
+                                  {u.name.charAt(0)}
+                                </div>
+                                <span className="font-semibold">{u.name.split(" ")[0]}</span>
+                              </div>
+                              <Check className={cn("ml-auto h-3 w-3 text-blue-500", assigneeIds.includes(u.id) ? "opacity-100" : "opacity-0")} />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {/* Mostrar los seleccionados como badges */}
+                {assigneeIds.map(id => {
+                  const u = users.find(x => x.id === id);
+                  if (!u) return null;
+                  return (
+                    <div key={u.id} className="flex items-center gap-1 shrink-0 px-2 py-1 bg-blue-50 text-blue-800 rounded-lg border border-blue-200 text-[11px] font-bold">
+                      <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white text-[8px] mr-0.5">{u.name.charAt(0)}</div>
+                      {u.name.split(" ")[0]}
+                      <button onClick={(e) => { e.stopPropagation(); toggleAssignee(u.id); }} className="ml-0.5 text-blue-400 hover:text-blue-600 cursor-pointer">✕</button>
                     </div>
-                    <span className="truncate">{u.name.split(" ")[0]}</span>
-                  </button>
-                ))}
+                  );
+                })}
+
               </div>
             </div>
           </div>

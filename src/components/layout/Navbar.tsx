@@ -4,8 +4,10 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ProjectSelector } from "./ProjectSelector";
 
-export function Navbar() {
+type MinProject = { id: string; name: string };
+export function Navbar({ projects = [], activeProjectId = null }: { projects?: MinProject[], activeProjectId?: string | null }) {
   const { data: session } = useSession();
   const pathname = usePathname();
 
@@ -28,10 +30,18 @@ export function Navbar() {
           <Link href="/" className="font-bold text-xl tracking-tight text-gray-900">
             Joaquin<span className="text-blue-600"> Palacin</span>
           </Link>
+          
           {session && (
-            <div className="hidden md:flex space-x-1">
+            <div className="ml-4 pl-4 border-l border-gray-200 hidden sm:block">
+              <ProjectSelector projects={projects} activeProjectId={activeProjectId} />
+            </div>
+          )}
+
+          {session && (
+            <div className="hidden lg:flex space-x-1 ml-4 border-l border-gray-200 pl-4">
               {navLink("/", "Tablero Kanban")}
               {navLink("/gantt", "Gantt")}
+              {session.user?.role === "ADMIN" && navLink("/catalog", "Catálogo")}
               {session.user?.role === "ADMIN" && navLink("/admin", "Administración")}
             </div>
           )}

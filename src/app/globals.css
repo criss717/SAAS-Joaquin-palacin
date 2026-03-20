@@ -127,4 +127,9 @@
   html {
     font-family: var(--font-outfit), sans-serif;
   }
+  button,
+  [role="button"],
+  select {
+    @apply cursor-pointer;
+  }
 }

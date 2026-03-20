@@ -97,3 +97,54 @@ model Stage {
 
   @@unique([projectId, name])
 }
+
+// ----------------------------------------------------------------------
+// MÓDULO DE CATÁLOGO / INGENIERÍA (BOM)
+// ----------------------------------------------------------------------
+
+/** 
+ * Máquina o Producto Teórico (Ej: Decanter P6)
+ * Actúa como la base o plantilla para crear un Proyecto.
+ */
+model MachineCatalog {
+  id          String   @id @default(uuid())
+  name        String   
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parts       CatalogPart[]
+}
+
+/** 
+ * Pieza o Ensamble del Catálogo (Ej: Rotor, Sinfín, Eje, Chasis)
+ * Al lanzarse a producción, se convierten en Task con isAssembly = true.
+ */
+model CatalogPart {
+  id          String   @id @default(uuid())
+  name        String   
+  machineId   String
+  machine     MachineCatalog @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  
+  parentId    String?
+  parent      CatalogPart?   @relation("CatalogSubParts", fields: [parentId], references: [id], onDelete: Cascade)
+  subParts    CatalogPart[]  @relation("CatalogSubParts")
+  
+  quantity    Int            @default(1) 
+  
+  operations  CatalogOperation[]
+}
+
+/** 
+ * Tarea operativa estándar (Ej: Soldar Virola, Torno)
+ * Al lanzarse a producción, se convierten en Task con isAssembly = false.
+ */
+model CatalogOperation {
+  id             String   @id @default(uuid())
+  name           String   
+  partId         String
+  part           CatalogPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  
+  estimatedDays  Int      @default(1)
+  orderIndex     Int      @default(0)
+}

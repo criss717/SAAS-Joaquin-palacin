@@ -4,9 +4,9 @@ import { useState } from "react";
 import {
   DragDropContext, Droppable, DropResult,
 } from "@hello-pangea/dnd";
-import { updateTaskStage, updateTaskStatus, updateTaskProgress, TaskWithRelations } from "@/lib/actions/tasks";
+import { reorderTasks, updateTaskStatus, updateTaskProgress, TaskWithRelations } from "@/lib/actions/tasks";
 import { reorderStages } from "@/lib/actions/stages";
-import { Settings2, Plus } from "lucide-react";
+import { Settings2, Plus, X } from "lucide-react";
 import { TaskDetailModal } from "./TaskDetailModal";
 import { StageManagerModal } from "./StageManagerModal";
 import { CreateTaskModal } from "./CreateTaskModal";
@@ -85,27 +85,70 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
       return;
     }
 
-    // ── Mover TARJETA entre columnas ──
-    if (destination.droppableId === source.droppableId) return;
+    // ── Mover / Reordenar TARJETAS ──
+    const sameColumn = destination.droppableId === source.droppableId;
+    const sameIndex = destination.index === source.index;
+
+    // Si no ha cambiado nada, salimos
+    if (sameColumn && sameIndex) return;
+
     const newStage = destination.droppableId;
+    const newIndex = destination.index;
     const isDoneStage = newStage.toLowerCase().includes("listo") || newStage.toLowerCase().includes("terminado");
 
-    setTasks(prev => prev.map(t => {
-      if (t.id === draggableId) {
-        return {
-          ...t,
-          stage: newStage,
-          status: isDoneStage ? "HECHO" : t.status,
-          progress: isDoneStage ? 100 : t.progress
-        };
-      }
-      return t;
-    }));
+    // --- ACTUALIZACIÓN OPTIMISTA ---
+    setTasks(prev => {
+      const allTasks = [...prev];
+      const taskIndex = allTasks.findIndex(t => t.id === draggableId);
+      if (taskIndex === -1) return prev;
 
-    await updateTaskStage(draggableId, newStage);
-    if (isDoneStage) {
-      await updateTaskStatus(draggableId, "HECHO");
-      await updateTaskProgress(draggableId, 100);
+      const [task] = allTasks.splice(taskIndex, 1);
+      const updatedTask = {
+        ...task,
+        stage: newStage,
+        status: isDoneStage ? "HECHO" : task.status,
+        progress: isDoneStage ? 100 : task.progress
+      };
+
+      // 1. Obtener tareas de las columnas origen y destino (ordenadas)
+      const sourceTasks = allTasks
+        .filter(t => t.stage === source.droppableId)
+        .sort((a, b) => a.orderIndex - b.orderIndex);
+
+      const destTasks = sameColumn
+        ? sourceTasks
+        : allTasks.filter(t => t.stage === newStage).sort((a, b) => a.orderIndex - b.orderIndex);
+
+      // 2. Insertar en la nueva posición
+      destTasks.splice(newIndex, 0, updatedTask as TaskWithRelations);
+
+      // 3. Crear mapa de nuevos índices
+      const indexMap: Record<string, number> = {};
+      destTasks.forEach((t, i) => { indexMap[t.id] = i; });
+      if (!sameColumn) {
+        sourceTasks.forEach((t, i) => { indexMap[t.id] = i; });
+      }
+
+      // 4. Actualizar estado global preservando el resto de columnas
+      return prev.map(t => {
+        if (t.id === draggableId) return { ...updatedTask, orderIndex: newIndex } as TaskWithRelations;
+        if (indexMap[t.id] !== undefined) {
+          return { ...t, orderIndex: indexMap[t.id], stage: t.id === draggableId ? newStage : t.stage };
+        }
+        return t;
+      }).sort((a, b) => a.orderIndex - b.orderIndex);
+    });
+
+    // --- PERSISTENCIA EN EL SERVIDOR ---
+    try {
+      await reorderTasks(draggableId, newStage, newIndex);
+      if (isDoneStage) {
+        await updateTaskStatus(draggableId, "HECHO");
+        await updateTaskProgress(draggableId, 100);
+      }
+    } catch (err) {
+      console.error("Error persistiendo orden:", err);
+      // Opcional: Revertir estado si falla, pero para una mejor UX solemos dejar el optimista
     }
   };
 
@@ -118,13 +161,22 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           <span>·</span>
           <span><strong className="text-gray-800">{tasks.length}</strong> tareas</span>
         </div>
-        <div className="flex ml-auto">
+        <div className="flex ml-auto relative">
           <Input
             placeholder="Buscar tarea / pieza / ensamble..."
             value={searchTask}
             onChange={(e) => setSearchTask(e.target.value)}
-            className="w-100"
+            className={`w-[400px] pr-8 transition-colors ${searchTask ? "border-b-2 border-blue-600 border-l-0 border-r-0 border-t-0" : ""}`}
           />
+          {searchTask && (
+            <button
+              onClick={() => setSearchTask("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 cursor-pointer p-1"
+              title="Limpiar búsqueda"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
         <div className="flex gap-2 ml-auto">
           <div className="w-[190px]">
@@ -164,10 +216,10 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
             </Select>
           </div>
           <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-gray-50 rounded-lg border border-gray-100">
-            <input 
+            <input
               id="hide-done"
-              type="checkbox" 
-              checked={!showDone} 
+              type="checkbox"
+              checked={!showDone}
               onChange={() => setShowDone(!showDone)}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
@@ -215,7 +267,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
                       (filterStatus === "" || t.status === filterStatus) &&
                       (filterAssignee === "" || filterAssignee === "ALL" || t.assignees.some(a => a.id === filterAssignee)) &&
                       (searchTask === "" || t.name.toLowerCase().includes(searchTask.toLowerCase()))
-                    );
+                    ).sort((a, b) => a.orderIndex - b.orderIndex);
 
                     return (
                       <KanbanColumn
@@ -298,7 +350,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
               const newStage = newStages.find(ns => ns.id === oldStage.id);
               if (newStage && newStage.name !== oldStage.name) {
                 // Se ha renombrado esta etapa
-                nextTasks = nextTasks.map(t => 
+                nextTasks = nextTasks.map(t =>
                   t.stage === oldStage.name ? { ...t, stage: newStage.name } : t
                 );
               }

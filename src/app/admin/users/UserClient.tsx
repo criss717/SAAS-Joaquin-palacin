@@ -217,8 +217,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline" size="sm" onClick={() => openEditModal(user)}
-                      disabled={user.id === currentUserId}
-                      className="h-8 rounded-lg text-gray-500 border-gray-200 cursor-pointer hover:text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                      className="h-8 rounded-lg text-gray-500 border-gray-200 cursor-pointer hover:text-blue-600 hover:bg-blue-50"
                     >
                       <Edit2 size={14} />
                     </Button>
@@ -352,8 +351,12 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
               </div>
               <div className="space-y-2 pl-7">
                 <Label className="text-[10px] font-bold text-gray-400 uppercase">Rol del Sistema</Label>
-                <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-                  <SelectTrigger className="w-full h-11 border-gray-100 bg-gray-50/50 rounded-xl font-bold text-gray-700 focus:ring-blue-500">
+                <Select 
+                  value={role} 
+                  onValueChange={(v) => setRole(v as Role)}
+                  disabled={selectedUser?.id === currentUserId}
+                >
+                  <SelectTrigger className={`w-full h-11 border-gray-100 bg-gray-50/50 rounded-xl font-bold text-gray-700 focus:ring-blue-500 ${selectedUser?.id === currentUserId ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

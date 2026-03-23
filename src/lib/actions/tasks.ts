@@ -19,7 +19,30 @@ export type TaskWithRelations = {
   endDate: Date
   projectId: string
   parentId: string | null
+  orderIndex: number
   assignees: TaskAssignee[]
+  subTasks: { id: string; name: string; stage: string; status: TaskStatus }[]
+  predecessors: { predecessor: { id: string; name: string } }[]
+  successors: { successor: { id: string; name: string } }[]
+}
+
+// Tipo auxiliar para Prisma antes del aplanado
+interface PrismaTaskWithRelations {
+  id: string
+  name: string
+  stage: string
+  status: TaskStatus
+  progress: number
+  isAssembly: boolean
+  startDate: Date
+  endDate: Date
+  projectId: string
+  parentId: string | null
+  orderIndex: number
+  estimatedHours: number | null
+  createdAt: Date
+  updatedAt: Date
+  assignees: { user: { id: string; name: string } }[]
   subTasks: { id: string; name: string; stage: string; status: TaskStatus }[]
   predecessors: { predecessor: { id: string; name: string } }[]
   successors: { successor: { id: string; name: string } }[]
@@ -54,13 +77,30 @@ export async function getTasksByProject(projectId: string): Promise<TaskWithRela
       predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
       successors: { include: { successor: { select: { id: true, name: true } } } },
     },
-    orderBy: { startDate: "asc" },
+    orderBy: { orderIndex: "asc" },
   })
+
+  // REPARACIÓN AUTOMÁTICA: Si hay muchas tareas con el mismo index (ej. tras la migración)
+  // las re-indexamos secuencialmente por fecha para que el dnd funcione fino.
+  const needsRepair = tasks.length > 1 && tasks.every(t => t.orderIndex === 0)
+  if (needsRepair) {
+    await prisma.$transaction(
+      tasks.map((t, i) => 
+        prisma.task.update({ where: { id: t.id }, data: { orderIndex: i } })
+      )
+    )
+    // Recargamos para devolver las tareas bien indexadas
+    return getTasksByProject(projectId)
+  }
+
   // Aplanar assignees a { id, name }
-  return tasks.map(t => ({
-    ...t,
-    assignees: t.assignees.map(a => ({ id: a.user.id, name: a.user.name })),
-  })) as TaskWithRelations[]
+  return tasks.map((t: unknown) => {
+    const task = t as PrismaTaskWithRelations
+    return {
+      ...task,
+      assignees: task.assignees.map(a => ({ id: a.user.id, name: a.user.name })),
+    }
+  }) as unknown as TaskWithRelations[]
 }
 
 /** Actualiza el estado manual de una tarea */
@@ -86,6 +126,61 @@ export async function updateTaskStage(taskId: string, newStage: string) {
   await prisma.task.update({ where: { id: taskId }, data: { stage: newStage } })
   // Solo revalidamos Gantt (otra página)
   revalidatePath("/gantt")
+}
+
+/**
+ * Reordena una tarea y desplaza las demás en la misma columna.
+ * Usa una transacción para asegurar consistencia.
+ */
+export async function reorderTasks(taskId: string, newStage: string, newIndex: number) {
+  await requireAuth()
+  
+  const task = await prisma.task.findUnique({ where: { id: taskId } })
+  if (!task) throw new Error("Tarea no encontrada")
+
+  const oldStage = task.stage
+  const projectId = task.projectId
+
+  return prisma.$transaction(async (tx) => {
+    // 1. Obtener todas las tareas de la(s) etapa(s) involucrada(s)
+    const stagesToUpdate = oldStage === newStage ? [newStage] : [oldStage, newStage]
+    
+    for (const stageName of stagesToUpdate) {
+      const stageTasks = await tx.task.findMany({
+        where: { projectId, stage: stageName },
+        orderBy: { orderIndex: "asc" }
+      })
+
+      let updatedList = [...stageTasks]
+
+      if (stageName === oldStage && stageName === newStage) {
+        // Mismo canal: mover dentro del array
+        const movingIndex = updatedList.findIndex(t => t.id === taskId)
+        if (movingIndex !== -1) {
+          const [moved] = updatedList.splice(movingIndex, 1)
+          updatedList.splice(newIndex, 0, moved)
+        }
+      } else if (stageName === oldStage) {
+        // Canal origen: quitar la tarea
+        updatedList = updatedList.filter(t => t.id !== taskId)
+      } else if (stageName === newStage) {
+        // Canal destino: insertar la tarea en el nuevo índice
+        // Nota: 'task' es la versión antigua, necesitamos insertarla
+        const taskToInsert = { ...task, stage: newStage } as unknown as PrismaTaskWithRelations
+        updatedList.splice(newIndex, 0, taskToInsert)
+      }
+
+      // 2. Aplicar nuevos índices secuenciales
+      await Promise.all(
+        updatedList.map((t, i) => 
+          tx.task.update({
+            where: { id: t.id },
+            data: { orderIndex: i, stage: stageName }
+          })
+        )
+      )
+    }
+  })
 }
 
 /**
@@ -166,15 +261,30 @@ export async function createTask(data: {
       successors: { include: { successor: { select: { id: true, name: true } } } },
     }
   })
+
+  // Asignar el último orden disponible en esa etapa (count - 1 porque el create ya contó la nueva)
+  const count = await prisma.task.count({
+    where: { projectId: data.projectId, stage: data.stage }
+  })
+  const updatedTask = await prisma.task.update({
+    where: { id: task.id },
+    data: { orderIndex: count - 1 },
+    include: {
+      assignees: { include: { user: { select: { id: true, name: true } } } },
+      subTasks: { select: { id: true, name: true, stage: true, status: true } },
+      predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
+      successors: { include: { successor: { select: { id: true, name: true } } } },
+    }
+  })
   
   const flattenedTask = {
-    ...task,
-    assignees: task.assignees.map(a => ({ id: a.user.id, name: a.user.name })),
+    ...(updatedTask as unknown as PrismaTaskWithRelations),
+    assignees: (updatedTask as unknown as PrismaTaskWithRelations).assignees.map(a => ({ id: a.user.id, name: a.user.name })),
   }
   // Sí revalidamos "/" porque hay una tarea nueva que deben ver todos
   revalidatePath("/")
   revalidatePath("/gantt")
-  return flattenedTask as TaskWithRelations
+  return flattenedTask as unknown as TaskWithRelations
 }
 
 /** Crea un nuevo proyecto — solo ADMIN */

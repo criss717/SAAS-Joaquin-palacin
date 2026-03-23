@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createMachine, deleteMachine, launchMachineToProject, importMachineFromExcel, updateMachine, cloneMachine } from "@/lib/actions/catalog";
-import { Plus, Trash2, Settings, ChevronRight, Play, Copy, ChevronLeft } from "lucide-react";
+import { Plus, Trash2, Settings, ChevronRight, Play, Copy, ChevronLeft, Search, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ type Machine = {
   id: string;
   name: string;
   description: string | null;
+  parts: { name: string }[];
   _count: { parts: number };
 };
 
@@ -31,7 +32,8 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   const [loading, setLoading] = useState(false);
   const [launchStartDate, setLaunchStartDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Paginación
+  // Búsqueda y Paginación
+  const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
@@ -65,7 +67,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
 
     const res = await importMachineFromExcel(formData);
     if (res.success && res.machine) {
-      setMachines([{ ...res.machine, _count: { parts: 0 } }, ...machines]);
+      setMachines([{ ...res.machine, parts: [], _count: { parts: 0 } }, ...machines]);
       toast.success(`Catálogo "${res.machine.name}" importado correctamente.`);
     } else {
       toast.error(res.error || "Error al importar Excel");
@@ -135,7 +137,12 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     setLoading(true);
     const res = await cloneMachine(id);
     if (res.success && res.machine) {
-      setMachines([{ ...res.machine, _count: { parts: machines.find(m => m.id === id)?._count.parts || 0 } }, ...machines]);
+      const originalMachine = machines.find(m => m.id === id);
+      setMachines([{ 
+        ...res.machine, 
+        parts: originalMachine?.parts || [], 
+        _count: { parts: originalMachine?._count.parts || 0 } 
+      }, ...machines]);
       toast.success("Máquina clonada correctamente.");
     } else {
       toast.error(res.error || "Error al clonar");
@@ -149,7 +156,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     setLoading(true);
     const res = await createMachine(name, description);
     if (res.success && res.machine) {
-      setMachines([{ ...res.machine, _count: { parts: 0 } }, ...machines]);
+      setMachines([{ ...res.machine, parts: [], _count: { parts: 0 } }, ...machines]);
       setIsModalOpen(false);
       setName("");
       setDescription("");
@@ -182,19 +189,47 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     }
   };
 
-  // Paginación
-  const totalPages = Math.ceil(machines.length / itemsPerPage);
-  const paginatedMachines = machines.slice(
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
+    setCurrentPage(1);
+  };
+
+  // Lógica de filtrado y paginación
+  const filteredMachines = machines.filter(m => 
+    m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    m.parts.some(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const totalPages = Math.ceil(filteredMachines.length / itemsPerPage);
+  const paginatedMachines = filteredMachines.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="text-sm text-gray-500">
-          Plantillas disponibles: <strong>{machines.length}</strong>
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex items-center gap-6 flex-1">
+          <div className="text-sm text-gray-500 whitespace-nowrap">
+            Resultado: <strong>{filteredMachines.length}</strong> de {machines.length}
+          </div>
+          
+          <div className="flex-1 max-w-md relative">
+            <Input 
+              placeholder="Buscar por máquina o pieza..." 
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className={`h-10 pl-10 border-gray-200 rounded-xl transition-all ${searchTerm ? 'border-blue-500 ring-1 ring-blue-500' : ''}`}
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            {searchTerm && (
+              <button onClick={() => handleSearchChange("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                <XCircle size={14} />
+              </button>
+            )}
+          </div>
         </div>
+
         <div className="flex gap-2">
           <input type="file" id="excel-import" className="hidden" accept=".xlsx" onChange={handleExcelImport} />
           <Button variant="outline" onClick={() => document.getElementById('excel-import')?.click()} disabled={loading} className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 rounded-xl font-bold">
@@ -246,7 +281,9 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
           </div>
         ))}
         {paginatedMachines.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-400 italic">No hay máquinas creadas.</div>
+          <div className="col-span-full py-12 text-center text-gray-400 italic">
+            {searchTerm ? `No se encontraron máquinas o piezas que coincidan con "${searchTerm}"` : "No hay máquinas creadas."}
+          </div>
         )}
       </div>
 

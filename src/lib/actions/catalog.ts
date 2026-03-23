@@ -32,6 +32,9 @@ export async function getMachines() {
   return await prisma.machineCatalog.findMany({
     orderBy: { createdAt: "desc" },
     include: {
+      parts: {
+        select: { name: true }
+      },
       _count: {
         select: { parts: true },
       },

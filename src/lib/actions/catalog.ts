@@ -333,11 +333,93 @@ export async function importMachineFromExcel(formData: FormData) {
       }
     }
 
-    revalidatePath("/catalog");
+  revalidatePath("/catalog");
     return { success: true, machine };
   } catch (error) {
     console.error("Excel Import Error:", error);
     return { success: false, error: "Error procesando el archivo Excel." };
+  }
+}
+
+/**
+ * CLONAR MÁQUINA (Clonación profunda de despiece)
+ */
+export async function cloneMachine(machineId: string) {
+  try {
+    // 1. Obtener la máquina original con todo su despiece
+    const original = await prisma.machineCatalog.findUnique({
+      where: { id: machineId },
+      include: {
+        parts: {
+          include: {
+            operations: true
+          }
+        }
+      }
+    });
+
+    if (!original) return { success: false, error: "Máquina no encontrada." };
+
+    // 2. Crear la nueva máquina (cabecera)
+    const newMachine = await prisma.machineCatalog.create({
+      data: {
+        name: `${original.name} (copia)`,
+        description: original.description ? `${original.description} (Copia de ${original.name})` : null
+      }
+    });
+
+    // 3. Diccionario para mapear IDs antiguos a nuevos para mantener jerarquía
+    const oldIdToNewId = new Map<string, string>();
+
+    // 4. Clonación Recursiva de Piezas
+    async function clonePartRecursive(oldPartId: string, newParentId: string | null) {
+      const part = original!.parts.find(p => p.id === oldPartId);
+      if (!part) return;
+
+      // Crear nueva pieza
+      const newPart = await prisma.catalogPart.create({
+        data: {
+          name: part.name,
+          quantity: part.quantity,
+          preferredStage: part.preferredStage,
+          machineId: newMachine.id,
+          parentId: newParentId,
+        }
+      });
+
+      oldIdToNewId.set(part.id, newPart.id);
+
+      // Clonar operaciones de esta pieza
+      for (const op of part.operations) {
+        await prisma.catalogOperation.create({
+          data: {
+            name: op.name,
+            estimatedHours: op.estimatedHours,
+            preferredStage: op.preferredStage,
+            orderIndex: op.orderIndex,
+            partId: newPart.id,
+          }
+        });
+      }
+
+      // Clonar hijos recursivamente
+      const children = original!.parts.filter(p => p.parentId === oldPartId);
+      for (const child of children) {
+        await clonePartRecursive(child.id, newPart.id);
+      }
+    }
+
+    // 5. Iniciar clonación desde las piezas raíz
+    const rootParts = original.parts.filter(p => !p.parentId);
+    for (const rp of rootParts) {
+      await clonePartRecursive(rp.id, null);
+    }
+
+    revalidatePath("/catalog");
+    return { success: true, machine: newMachine };
+  } catch (error) {
+    console.error("Error cloning machine:", error);
+    return { success: false, error: "Error al clonar la máquina." };
   }
 }
 

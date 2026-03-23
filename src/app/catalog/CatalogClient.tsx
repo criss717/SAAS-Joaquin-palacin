@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createMachine, deleteMachine, launchMachineToProject, importMachineFromExcel, updateMachine } from "@/lib/actions/catalog";
-import { Plus, Trash2, Settings, ChevronRight, Play } from "lucide-react";
+import { createMachine, deleteMachine, launchMachineToProject, importMachineFromExcel, updateMachine, cloneMachine } from "@/lib/actions/catalog";
+import { Plus, Trash2, Settings, ChevronRight, Play, Copy, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,10 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [launchStartDate, setLaunchStartDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
 
   const handleOpenLaunch = (machineId: string) => {
     setSelectedMachineToLaunch(machineId);
@@ -115,6 +119,30 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     }
   };
 
+  const handleClone = async (id: string, machineName: string) => {
+    const result = await Swal.fire({
+      title: '¿Clonar Máquina?',
+      text: `Se creará una copia exacta de "${machineName}".`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#2563eb',
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: 'Sí, clonar',
+      heightAuto: false
+    });
+    if (!result.isConfirmed) return;
+
+    setLoading(true);
+    const res = await cloneMachine(id);
+    if (res.success && res.machine) {
+      setMachines([{ ...res.machine, _count: { parts: machines.find(m => m.id === id)?._count.parts || 0 } }, ...machines]);
+      toast.success("Máquina clonada correctamente.");
+    } else {
+      toast.error(res.error || "Error al clonar");
+    }
+    setLoading(false);
+  };
+
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -154,6 +182,13 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     }
   };
 
+  // Paginación
+  const totalPages = Math.ceil(machines.length / itemsPerPage);
+  const paginatedMachines = machines.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -171,14 +206,17 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {machines.map((machine) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 min-h-[540px] content-start">
+        {paginatedMachines.map((machine) => (
           <div key={machine.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col">
             <div className="flex justify-between items-start mb-4">
               <div title="Editar máquina" onClick={() => handleEdit(machine)} className="p-3 cursor-pointer bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100">
                 <Settings size={24} />
               </div>
               <div className="flex gap-1">
+                <Button title="Clonar máquina" variant="ghost" size="icon" onClick={() => handleClone(machine.id, machine.name)} className="text-gray-400 hover:text-blue-600 hover:bg-blue-50">
+                  <Copy size={16} />
+                </Button>
                 <Button title="Eliminar máquina" variant="ghost" size="icon" onClick={() => handleDelete(machine.id, machine.name)} className="text-gray-400 hover:text-red-600 hover:bg-red-50">
                   <Trash2 size={16} />
                 </Button>
@@ -207,10 +245,52 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
             </div>
           </div>
         ))}
-        {machines.length === 0 && (
+        {paginatedMachines.length === 0 && (
           <div className="col-span-full py-12 text-center text-gray-400 italic">No hay máquinas creadas.</div>
         )}
       </div>
+
+      {/* Paginación */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white px-6 py-4 border border-gray-100 rounded-2xl shadow-sm mt-4">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+            Página {currentPage} de {totalPages}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="h-9 w-9 p-0 rounded-xl border-gray-200 text-gray-500 disabled:opacity-30"
+            >
+              <ChevronLeft size={16} />
+            </Button>
+
+            <div className="flex items-center gap-1 mx-2">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  className={`w-9 h-9 rounded-xl text-xs font-black transition-all ${currentPage === p ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-100'}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="h-9 w-9 p-0 rounded-xl border-gray-200 text-gray-500 disabled:opacity-30"
+            >
+              <ChevronRight size={16} />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">

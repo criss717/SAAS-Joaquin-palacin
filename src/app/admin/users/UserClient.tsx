@@ -217,63 +217,65 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
         </Button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-            <tr>
-              <th className="px-6 py-4">Usuario</th>
-              <th className="px-6 py-4">Email</th>
-              <th className="px-6 py-4">Rol</th>
-              <th className="px-6 py-4 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {paginatedUsers.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                <td className="px-6 py-4 font-bold text-gray-800 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black">
-                    {user.name.charAt(0)}
-                  </div>
-                  {user.name}
-                </td>
-                <td className="px-6 py-4 text-gray-500">{user.email}</td>
-                <td className="px-6 py-4">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border ${user.role === 'ADMIN'
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    }`}>
-                    {user.role === 'ADMIN' ? <ShieldAlert size={10} /> : <User size={10} />}
-                    {user.role}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline" size="sm" onClick={() => openEditModal(user)}
-                      className="h-8 rounded-lg text-gray-500 border-gray-200 cursor-pointer hover:text-blue-600 hover:bg-blue-50"
-                    >
-                      <Edit2 size={14} />
-                    </Button>
-                    <Button
-                      variant="outline" size="sm" onClick={() => handleDelete(user.id, user.name)}
-                      disabled={user.id === currentUserId}
-                      className="h-8 rounded-lg text-gray-500 border-gray-20 cursor-pointer hover:text-red-600 hover:bg-red-50 hover:border-red-200 disabled:opacity-50"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {paginatedUsers.length === 0 && (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[560px]">
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
               <tr>
-                <td colSpan={4} className="px-6 py-8 text-center text-gray-400 font-medium italic">
-                  {searchTerm ? `No se encontraron usuarios que coincidan con "${searchTerm}"` : "No hay usuarios registrados."}
-                </td>
+                <th className="px-6 py-4">Usuario</th>
+                <th className="px-6 py-4">Email</th>
+                <th className="px-6 py-4">Rol</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {paginatedUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-6 py-4 font-bold text-gray-800 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black">
+                      {user.name.charAt(0)}
+                    </div>
+                    {user.name}
+                  </td>
+                  <td className="px-6 py-4 text-gray-500">{user.email}</td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border ${user.role === 'ADMIN'
+                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                      {user.role === 'ADMIN' ? <ShieldAlert size={10} /> : <User size={10} />}
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline" size="sm" onClick={() => openEditModal(user)}
+                        className="h-8 rounded-lg text-gray-500 border-gray-200 cursor-pointer hover:text-blue-600 hover:bg-blue-50"
+                      >
+                        <Edit2 size={14} />
+                      </Button>
+                      <Button
+                        variant="outline" size="sm" onClick={() => handleDelete(user.id, user.name)}
+                        disabled={user.id === currentUserId}
+                        className="h-8 rounded-lg text-gray-500 border-gray-20 cursor-pointer hover:text-red-600 hover:bg-red-50 hover:border-red-200 disabled:opacity-50"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {paginatedUsers.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400 font-medium italic">
+                    {searchTerm ? `No se encontraron usuarios que coincidan con "${searchTerm}"` : "No hay usuarios registrados."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Paginación */}
         {totalPages > 1 && (

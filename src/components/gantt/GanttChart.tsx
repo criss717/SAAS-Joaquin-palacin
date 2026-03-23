@@ -23,7 +23,12 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 
     let styles = undefined;
     if (t.isAssembly) {
-      styles = { progressColor: "#818cf8", progressSelectedColor: "#6366f1" };
+      styles = { 
+        progressColor: "#a855f7", 
+        progressSelectedColor: "#9333ea",
+        backgroundColor: "#f5f3ff", // Purple 50
+        backgroundSelectedColor: "#ede9fe" // Purple 100
+      };
     } else {
       switch (t.status) {
         case "HECHO":
@@ -190,7 +195,7 @@ export function GanttChart({ initialTasks }: Props) {
       {/* Leyenda */}
       <div className="flex gap-4 mb-6 flex-wrap text-[10px] text-gray-400 font-medium px-2">
         {[
-          { color: "bg-indigo-400", label: "ENSAMBLE" },
+          { color: "bg-purple-500", label: "ENSAMBLE" },
           { color: "bg-blue-500", label: "EN PROCESO" },
           { color: "bg-green-500", label: "LISTO" },
           { color: "bg-amber-500", label: "CAMBIOS" },

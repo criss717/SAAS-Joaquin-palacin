@@ -10,8 +10,8 @@ import { TaskCard } from "./TaskCard";
 interface KanbanColumnProps {
   column: { id: string; name: string; color: string };
   index: number;
-  tasks: TaskWithRelations[]; 
-  allTasks: TaskWithRelations[]; 
+  tasks: TaskWithRelations[];
+  allTasks: TaskWithRelations[];
   expandedCards: Set<string>;
   onToggleExpand: (id: string, e: React.MouseEvent) => void;
   onSelectTask: (task: TaskWithRelations) => void;
@@ -30,7 +30,7 @@ export const KanbanColumn = ({
 }: KanbanColumnProps) => {
   // Estado local para carga perezosa (Lazy Rendering)
   const [visibleCount, setVisibleCount] = useState(50);
-  
+
   const visibleTasks = tasks.slice(0, visibleCount);
   const remainingCount = tasks.length - visibleCount;
 
@@ -40,9 +40,8 @@ export const KanbanColumn = ({
         <div
           ref={colDrag.innerRef}
           {...colDrag.draggableProps}
-          className={`flex min-h-[calc(100vh-220px)] flex-col w-72 shrink-0 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden transition-shadow ${
-            colSnapshot.isDragging ? "shadow-2xl rotate-1" : ""
-          }`}
+          className={`flex min-h-[calc(100vh-220px)] flex-col w-[300px] shrink-0 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden transition-shadow ${colSnapshot.isDragging ? "shadow-2xl rotate-1" : ""
+            }`}
           style={{
             ...colDrag.draggableProps.style,
             borderTopColor: column.color,
@@ -77,9 +76,8 @@ export const KanbanColumn = ({
               <div
                 ref={taskProvided.innerRef}
                 {...taskProvided.droppableProps}
-                className={`flex-1 px-3 py-3 flex flex-col gap-2 min-h-[200px] transition-colors ${
-                  taskSnapshot.isDraggingOver ? "bg-blue-50/60" : ""
-                }`}
+                className={`flex-1 px-3 py-3 flex flex-col gap-2 min-h-[200px] transition-colors ${taskSnapshot.isDraggingOver ? "bg-blue-50/60" : ""
+                  }`}
               >
                 {visibleTasks.map((task, idx) => (
                   <TaskCard
@@ -93,7 +91,7 @@ export const KanbanColumn = ({
                     onSelectTask={onSelectTask}
                   />
                 ))}
-                
+
                 {taskProvided.placeholder}
 
                 {/* Botón "Cargar más" para no saturar el DOM */}

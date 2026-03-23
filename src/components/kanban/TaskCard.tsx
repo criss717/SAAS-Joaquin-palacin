@@ -35,13 +35,11 @@ export const TaskCard = memo(({
           {...taskDrag.draggableProps}
           {...taskDrag.dragHandleProps}
           onClick={() => onSelectTask(task)}
-          className={`bg-white rounded-lg border border-gray-200 shadow-sm cursor-pointer transition-all ${
-            taskDragSnapshot.isDragging
-              ? "shadow-xl rotate-1 scale-[1.02]"
-              : "hover:shadow-md hover:-translate-y-0.5"
-          } ${task.status === "HECHO" ? "grayscale opacity-75 bg-gray-50 border-gray-300" : ""} ${
-            task.status === "CANCELADO" ? "opacity-50" : ""
-          }`}
+          className={`bg-white rounded-lg border border-gray-200 shadow-sm cursor-pointer transition-all ${taskDragSnapshot.isDragging
+            ? "shadow-xl rotate-1 scale-[1.02]"
+            : "hover:shadow-md hover:-translate-y-0.5"
+            } ${task.status === "HECHO" ? "grayscale opacity-75 bg-gray-50 border-gray-300" : ""} ${task.status === "CANCELADO" ? "opacity-50" : ""
+            }`}
         >
           <div className="p-3">
             <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -88,9 +86,38 @@ export const TaskCard = memo(({
                 {isExpanded && (
                   <ul className="mt-2 space-y-1">
                     {projectSubTasks.map(sub => (
-                      <li key={sub.id} className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <span className={`w-1.5 h-1.5 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-gray-300"}`} />
-                        {sub.name}
+                      <li
+                        key={sub.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectTask(sub);
+                        }}
+                        className="flex items-center justify-between gap-1.5 text-[11px] text-gray-600 p-1.5 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors group/sub"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-gray-300"}`} />
+                          <span className="truncate group-hover/sub:text-blue-600 transition-colors font-medium">{sub.name}</span>
+                        </div>
+                        {/* Asignados miniatura de la sub-tarea */}
+                        {sub.assignees.length > 0 && (
+                          <div className="flex gap-[1.1px] shrink-0 ml-1.5">
+                            {sub.assignees.slice(0, 3).map(a => (
+                              <div
+                                key={a.id}
+                                title={a.name}
+                                className="w-[16px] h-[16px] rounded-full ring-1 ring-white flex items-center justify-center text-white font-bold text-[8px] shadow-sm"
+                                style={{ backgroundColor: columnColor }}
+                              >
+                                {a.name.charAt(0)}
+                              </div>
+                            ))}
+                            {sub.assignees.length > 3 && (
+                              <div className="w-[16px] h-[16px] rounded-full ring-1 ring-white bg-gray-200 flex items-center justify-center text-gray-600 text-[8px] font-bold shadow-sm">
+                                +{sub.assignees.length - 3}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -106,9 +133,8 @@ export const TaskCard = memo(({
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
                 <div
-                  className={`h-full transition-all duration-500 ${
-                    task.status === "HECHO" ? "bg-green-500" : task.status === "CANCELADO" ? "bg-gray-400" : "bg-blue-600"
-                  }`}
+                  className={`h-full transition-all duration-500 ${task.status === "HECHO" ? "bg-green-500" : task.status === "CANCELADO" ? "bg-gray-400" : "bg-blue-600"
+                    }`}
                   style={{ width: `${task.progress}%` }}
                 />
               </div>

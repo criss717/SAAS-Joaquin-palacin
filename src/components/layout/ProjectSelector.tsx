@@ -64,6 +64,7 @@ export function ProjectSelector({
       confirmButtonText: "Crear",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#2563eb",
+      heightAuto: false,
       preConfirm: () => {
         const name = (document.getElementById('swal-name') as HTMLInputElement).value;
         const date = (document.getElementById('swal-date') as HTMLInputElement).value;
@@ -98,7 +99,8 @@ export function ProjectSelector({
       confirmButtonColor: "#ef4444",
       cancelButtonColor: "#9ca3af",
       confirmButtonText: "Sí, eliminar",
-      cancelButtonText: "Cancelar"
+      cancelButtonText: "Cancelar",
+      heightAuto: false
     });
 
     if (result.isConfirmed) {

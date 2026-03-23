@@ -188,7 +188,8 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
                       confirmButtonColor: "#ef4444",
                       cancelButtonColor: "#94a3b8",
                       confirmButtonText: "Sí, eliminar",
-                      cancelButtonText: "Cancelar"
+                      cancelButtonText: "Cancelar",
+                      heightAuto: false
                     });
 
                     if (result.isConfirmed) {
@@ -268,7 +269,8 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
                       showCancelButton: true,
                       confirmButtonColor: "#ef4444",
                       confirmButtonText: "Eliminar",
-                      cancelButtonText: "Volver"
+                      cancelButtonText: "Volver",
+                      heightAuto: false
                     });
 
                     if (result.isConfirmed) {

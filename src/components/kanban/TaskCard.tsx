@@ -42,7 +42,8 @@ export const TaskCard = memo(({
       confirmButtonColor: "#ef4444",
       cancelButtonColor: "#94a3b8",
       confirmButtonText: "Sí, eliminar",
-      cancelButtonText: "Cancelar"
+      cancelButtonText: "Cancelar",
+      heightAuto: false
     });
 
     if (result.isConfirmed) {

@@ -90,7 +90,8 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       cancelButtonText: 'Cancelar',
-      confirmButtonText: 'Sí, eliminar'
+      confirmButtonText: 'Sí, eliminar',
+      heightAuto: false
     });
     if (!result.isConfirmed) return;
 

@@ -90,6 +90,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
       confirmButtonText: "Guardar",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#2563eb",
+      heightAuto: false,
       preConfirm: () => {
         const name = (document.getElementById('swal-edit-name') as HTMLInputElement).value;
         const desc = (document.getElementById('swal-edit-desc') as HTMLInputElement).value;
@@ -139,7 +140,8 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       cancelButtonText: 'Cancelar',
-      confirmButtonText: 'Sí, eliminar'
+      confirmButtonText: 'Sí, eliminar',
+      heightAuto: false
     });
     if (!result.isConfirmed) return;
 

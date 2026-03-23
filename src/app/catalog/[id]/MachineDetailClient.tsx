@@ -100,7 +100,8 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       cancelButtonText: 'Cancelar',
-      confirmButtonText: 'Sí, eliminar'
+      confirmButtonText: 'Sí, eliminar',
+      heightAuto: false
     });
     if (!result.isConfirmed) return;
 

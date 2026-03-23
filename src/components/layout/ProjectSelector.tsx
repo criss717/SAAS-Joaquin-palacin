@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Trash2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -19,7 +19,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { setActiveProjectCookie, createEmptyProject } from "@/lib/actions/projects";
+import { setActiveProjectCookie, createEmptyProject, updateProjectAction } from "@/lib/actions/projects";
 
 type Project = { id: string; name: string };
 
@@ -77,7 +77,7 @@ export function ProjectSelector({
     });
 
     if (!formValues) return;
-    
+
     setOpen(false);
     setLoading(true);
     const res = await createEmptyProject(formValues.name, formValues.startDate);
@@ -116,6 +116,38 @@ export function ProjectSelector({
     }
   };
 
+  const handleEdit = async (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation();
+    const { value: newName } = await Swal.fire({
+      title: "Renombrar Proyecto",
+      input: "text",
+      inputLabel: "Nuevo nombre del proyecto",
+      inputValue: name,
+      showCancelButton: true,
+      confirmButtonText: "Guardar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#2563eb",
+      heightAuto: false,
+      inputValidator: (value) => {
+        if (!value || !value.trim()) {
+          return "El nombre es obligatorio";
+        }
+        return null;
+      }
+    });
+
+    if (newName && newName.trim() !== name) {
+      setLoading(true);
+      const res = await updateProjectAction(id, newName.trim());
+      if (res.success) {
+        toast.success("Proyecto renombrado con éxito.");
+      } else {
+        toast.error("Error al renombrar el proyecto.");
+      }
+      setLoading(false);
+    }
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -140,7 +172,7 @@ export function ProjectSelector({
                   key={project.id}
                   value={project.name}
                   onSelect={() => handleSelect(project.id)}
-                  className="cursor-pointer flex items-center justify-between group"
+                  className="cursor-pointer flex items-center group/item pr-1 [&>svg]:hidden"
                 >
                   <div className="flex items-center flex-1 min-w-0 pr-2">
                     <Check
@@ -151,13 +183,22 @@ export function ProjectSelector({
                     />
                     <span className="truncate">{project.name}</span>
                   </div>
-                  <button 
-                    onClick={(e) => handleDelete(e, project.id, project.name)}
-                    className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                    title="Eliminar Proyecto"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex gap-1 opacity-0 group-hover/item:opacity-100 transition-all shrink-0 ml-auto">
+                    <button
+                      onClick={(e) => handleEdit(e, project.id, project.name)}
+                      className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                      title="Renombrar Proyecto"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDelete(e, project.id, project.name)}
+                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="Eliminar Proyecto"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </CommandItem>
               ))}
             </CommandGroup>

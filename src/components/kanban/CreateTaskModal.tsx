@@ -298,7 +298,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
             <div className="space-y-1.5 px-1">
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Asignados (opcional)</Label>
               <div className="flex flex-wrap gap-2 items-center p-2 bg-gray-50 rounded-2xl border border-gray-100 min-h-[50px]">
-                
+
                 {/* Botón para añadir */}
                 <Popover>
                   <PopoverTrigger className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-400 hover:text-blue-500 hover:border-blue-200 hover:bg-white transition-all cursor-pointer">
@@ -356,7 +356,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
           <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl border-gray-200 font-bold px-6 cursor-pointer">
             Cancelar
           </Button>
-          <Button onClick={handleCreate} disabled={isPending || !name.trim()} className="rounded-xl bg-blue-600 text-white font-black px-8 shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all cursor-pointer">
+          <Button onClick={handleCreate} disabled={isPending || !name.trim()} className="rounded-xl bg-blue-600 text-white font-black px-8 hover:bg-blue-700 transition-all cursor-pointer">
             {isPending ? "Creando…" : <><Plus size={16} className="mr-2" strokeWidth={3} /> Crear Tarea</>}
           </Button>
         </div>

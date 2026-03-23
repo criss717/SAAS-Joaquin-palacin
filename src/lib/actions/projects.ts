@@ -61,3 +61,18 @@ export async function deleteProjectAction(projectId: string) {
     return { success: false, error: "Error al eliminar el proyecto." };
   }
 }
+
+export async function updateProjectAction(projectId: string, name: string) {
+  try {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { name },
+    });
+    revalidatePath("/");
+    revalidatePath("/gantt");
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating project:", error);
+    return { success: false, error: "Error al actualizar el proyecto." };
+  }
+}

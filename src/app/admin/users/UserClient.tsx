@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { UserWithoutPassword, createUser, updateUserRole, deleteUser } from "@/lib/actions/users";
+import { UserWithoutPassword, createUser, updateUserRole, deleteUser, updateUserPassword, updateUserAccount } from "@/lib/actions/users";
 import { Role } from "@prisma/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, ShieldAlert, ShieldCheck, Mail, User, Trash2, Edit2 } from "lucide-react";
+import { Plus, ShieldAlert, ShieldCheck, Mail, User, Trash2, Edit2, Eye, EyeOff, Lock } from "lucide-react";
 import Swal from "sweetalert2";
 import { toast } from "sonner";
 
@@ -22,6 +22,12 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("USER");
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -39,6 +45,12 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   const openEditModal = (u: UserWithoutPassword) => {
     setSelectedUser(u);
     setRole(u.role);
+    setEditName(u.name);
+    setEditEmail(u.email);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setError("");
     setSuccessMsg("");
     setIsEditModalOpen(true);
@@ -56,11 +68,15 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
     const res = await createUser({ name, email, role });
     if (res.success && res.user) {
       setUsers(prev => [...prev, res.user as UserWithoutPassword]);
-      setSuccessMsg("¡Usuario creado! Se ha enviado un email con su contraseña.");
+      if (res.emailSent) {
+        setSuccessMsg("¡Usuario creado! Se ha enviado un email con su contraseña.");
+      } else {
+        setSuccessMsg("⚠️ ¡Usuario creado! Pero el email no pudo enviarse. Pide la clave al administrador.");
+      }
       setTimeout(() => {
         setIsInviteModalOpen(false);
         setSuccessMsg("");
-      }, 3000);
+      }, 5000);
     } else {
       setError(res.error || "Error al invitar usuario.");
     }
@@ -75,9 +91,54 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
     const res = await updateUserRole(selectedUser.id, role);
     if (res.success) {
       setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, role } : u));
+      toast.success("Rol actualizado.");
       setIsEditModalOpen(false);
     } else {
       setError(res.error || "Error al actualizar rol.");
+    }
+    setLoading(false);
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!selectedUser) return;
+    if (!editName.trim() || !editEmail.trim()) {
+      setError("Nombre y email son obligatorios.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+
+    const res = await updateUserAccount(selectedUser.id, { name: editName, email: editEmail });
+    if (res.success) {
+      setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, name: editName, email: editEmail } : u));
+      toast.success("Perfil actualizado correctamente.");
+    } else {
+      setError(res.error || "Error al actualizar perfil.");
+    }
+    setLoading(false);
+  };
+
+  const handlePasswordReset = async () => {
+    if (!selectedUser) return;
+    if (!newPassword || newPassword.length < 6) {
+      setError("La contraseña debe tener al menos 6 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    const res = await updateUserPassword(selectedUser.id, newPassword);
+    if (res.success) {
+      toast.success("Contraseña actualizada correctamente.");
+      setNewPassword("");
+      setConfirmPassword("");
+      // No cerramos el modal por si quiere cambiar el rol también
+    } else {
+      setError(res.error || "Error al resetear contraseña.");
     }
     setLoading(false);
   };
@@ -221,41 +282,160 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
             <Button variant="outline" onClick={() => setIsInviteModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">
               Cancelar
             </Button>
-            <Button onClick={handleInvite} disabled={loading || successMsg !== ""} className="rounded-xl font-black shadow-lg shadow-blue-200">
+            <Button onClick={handleInvite} disabled={loading || successMsg !== ""} className="rounded-xl font-black bg-blue-100 hover:bg-blue-200 text-blue-600">
               {loading ? "Enviando invitación..." : "Invitar y Enviar Email"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Editar Rol */}
+      {/* Modal Editar Rol y Contraseña */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-sm rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-black text-gray-900">Editar Usuario</DialogTitle>
-            <DialogDescription>Modificar permisos de {selectedUser?.name}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nivel de Acceso</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-                <SelectTrigger className="w-full h-10 border-gray-200 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USER">Operario (USER)</SelectItem>
-                  <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {error && <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-xl">{error}</div>}
+        <DialogContent className="sm:max-w-md rounded-2xl overflow-hidden p-0 border-none shadow-2xl">
+          <div className="bg-linear-to-r from-gray-800 to-blue-600 px-6 py-6 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-black flex items-center gap-2">
+                <Edit2 size={24} /> Editar Usuario
+              </DialogTitle>
+              <DialogDescription className="text-blue-100 font-medium opacity-90">
+                Gestionar accesos y credenciales de {selectedUser?.name}
+              </DialogDescription>
+            </DialogHeader>
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">
-              Cancelar
-            </Button>
-            <Button onClick={handleEditRole} disabled={loading} className="rounded-xl font-black shadow-lg shadow-blue-200">
-              {loading ? "Guardando..." : "Guardar Cambios"}
+
+          <div className="p-6 space-y-8 bg-white max-h-[70vh] overflow-y-auto">
+            {/* Sección de DATOS PERSONALES */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-blue-600">
+                <User size={18} />
+                <h3 className="text-sm font-black uppercase tracking-wider">Datos Personales</h3>
+              </div>
+              <div className="space-y-4 pl-7">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold text-gray-400 uppercase">Nombre Completo</Label>
+                  <Input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    placeholder="Nombre del usuario"
+                    className="h-11 border-gray-100 bg-gray-50/50 rounded-xl focus:ring-blue-500 font-bold text-gray-700"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold text-gray-400 uppercase">Correo Electrónico</Label>
+                  <Input
+                    type="email"
+                    value={editEmail}
+                    onChange={e => setEditEmail(e.target.value)}
+                    placeholder="email@ejemplo.com"
+                    className="h-11 border-gray-100 bg-gray-50/50 rounded-xl focus:ring-blue-500 font-bold text-gray-700"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button
+                  onClick={handleUpdateProfile}
+                  disabled={loading || (editName === selectedUser?.name && editEmail === selectedUser?.email)}
+                  className="rounded-xl h-10 px-6 bg-blue-100 hover:bg-blue-200 text-blue-600 font-black text-xs"
+                >
+                  Actualizar Perfil
+                </Button>
+              </div>
+            </div>
+
+            <div className="h-px bg-gray-100 -mx-6"></div>
+
+            {/* Sección de ROL */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-blue-600">
+                <ShieldCheck size={18} />
+                <h3 className="text-sm font-black uppercase tracking-wider">Permisos de Acceso</h3>
+              </div>
+              <div className="space-y-2 pl-7">
+                <Label className="text-[10px] font-bold text-gray-400 uppercase">Rol del Sistema</Label>
+                <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+                  <SelectTrigger className="w-full h-11 border-gray-100 bg-gray-50/50 rounded-xl font-bold text-gray-700 focus:ring-blue-500">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USER">Operario (USER)</SelectItem>
+                    <SelectItem value="ADMIN">Administrador (ADMIN)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-gray-400 italic">Los administradores tienen acceso total al panel de control y catálogos.</p>
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleEditRole} disabled={loading || role === selectedUser?.role} className="rounded-xl h-10 px-6 text-blue-600 bg-blue-100 hover:bg-blue-200 border border-indigo-100 font-black text-xs">
+                  Actualizar Rol
+                </Button>
+              </div>
+            </div>
+
+            <div className="h-px bg-gray-100 -mx-6"></div>
+
+            {/* Sección de CONTRASEÑA */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-amber-500">
+                <Lock size={18} />
+                <h3 className="text-sm font-black uppercase tracking-wider">Seguridad y Acceso</h3>
+              </div>
+
+              <div className="space-y-4 pl-7">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold text-gray-400 uppercase">Nueva Contraseña</Label>
+                  <div className="relative">
+                    <Input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="Min. 6 caracteres"
+                      className="h-11 border-gray-100 bg-gray-50/50 rounded-xl pr-10 font-mono"
+                    />
+                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold text-gray-400 uppercase">Confirmar Contraseña</Label>
+                  <div className="relative">
+                    <Input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="Repite la contraseña"
+                      className="h-11 border-gray-100 bg-gray-50/50 rounded-xl pr-10 font-mono"
+                    />
+                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={handlePasswordReset}
+                    disabled={loading || !newPassword || newPassword !== confirmPassword}
+                    className="rounded-xl h-10 px-6 border-amber-200 text-amber-600 hover:bg-amber-50 font-black text-xs"
+                  >
+                    Reiniciar Contraseña
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-[11px] font-bold rounded-xl flex items-center gap-2">
+                <ShieldAlert size={14} className="shrink-0" /> {error}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-gray-50 p-4 flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest border-t border-gray-100">
+            <span>ID: {selectedUser?.id.slice(0, 8)}...</span>
+            <Button variant="ghost" onClick={() => setIsEditModalOpen(false)} className="text-gray-500 hover:text-gray-700 font-black">
+              Cerrar Panel
             </Button>
           </div>
         </DialogContent>

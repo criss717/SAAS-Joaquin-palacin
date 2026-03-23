@@ -312,7 +312,7 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
             <Button variant="outline" onClick={() => setIsPartModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">Cancelar</Button>
-            <Button onClick={handleCreatePart} disabled={loading || !name} className="rounded-xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200">Guardar Pieza</Button>
+            <Button onClick={handleCreatePart} disabled={loading || !name} className="rounded-xl font-black bg-blue-600 hover:bg-blue-700 text-white">Guardar Pieza</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -333,7 +333,7 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
             <Button variant="outline" onClick={() => setIsOpModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">Cancelar</Button>
-            <Button onClick={handleCreateOp} disabled={loading || !name} className="rounded-xl font-black bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200">Guardar Operación</Button>
+            <Button onClick={handleCreateOp} disabled={loading || !name} className="rounded-xl font-black bg-indigo-600 hover:bg-indigo-700 text-white">Guardar Operación</Button>
           </div>
         </DialogContent>
       </Dialog>

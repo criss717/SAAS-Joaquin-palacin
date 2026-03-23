@@ -505,7 +505,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
             <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl cursor-pointer">
               Cerrar sin guardar
             </Button>
-            <Button onClick={handleSave} disabled={isPending} className="rounded-xl bg-blue-600 text-white font-bold px-6 shadow-lg shadow-blue-100 cursor-pointer">
+            <Button onClick={handleSave} disabled={isPending} className="rounded-xl bg-blue-600 text-white font-bold px-6 cursor-pointer">
               {isPending ? "Guardando..." : "Guardar Cambios"}
             </Button>
           </div>

@@ -9,6 +9,8 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  connectionTimeout: 5000, // 5 segundos para conectar
+  greetingTimeout: 5000,
 });
 
 interface SendWelcomeEmailParams {

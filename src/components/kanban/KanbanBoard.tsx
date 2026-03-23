@@ -51,6 +51,24 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
     });
   };
 
+  const handleDeleteTask = (taskId: string) => {
+    setTasks(prev => {
+      // Identificar todos los descendientes recursivamente
+      const idsToDelete = new Set([taskId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        prev.forEach(t => {
+          if (t.parentId && idsToDelete.has(t.parentId) && !idsToDelete.has(t.id)) {
+            idsToDelete.add(t.id);
+            changed = true;
+          }
+        });
+      }
+      return prev.filter(t => !idsToDelete.has(t.id));
+    });
+  };
+
   const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId, type } = result;
     if (!destination) return;
@@ -209,6 +227,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
                         expandedCards={expandedCards}
                         onToggleExpand={toggleExpand}
                         onSelectTask={setSelectedTask}
+                        onDeleteTask={handleDeleteTask}
                         onAddTask={(stageName) => {
                           setPreSelectedStage(stageName);
                           setShowCreateTask(true);
@@ -242,6 +261,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
             setSelectedTask(null);
           }
         }}
+        onDeleteTask={handleDeleteTask}
       />
 
       <CreateTaskModal

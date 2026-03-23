@@ -185,6 +185,14 @@ export async function createProject(data: { name: string; stage?: string }) {
   return project
 }
 
+/** Elimina una tarea y todos sus descendientes (Cascade Delete) */
+export async function deleteTask(taskId: string) {
+  await requireAuth()
+  await prisma.task.delete({ where: { id: taskId } })
+  revalidatePath("/")
+  revalidatePath("/gantt")
+}
+
 /** Lista todos los usuarios — para asignar en tareas */
 export async function getUsers() {
   await requireAuth()

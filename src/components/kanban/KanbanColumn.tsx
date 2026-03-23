@@ -15,6 +15,7 @@ interface KanbanColumnProps {
   expandedCards: Set<string>;
   onToggleExpand: (id: string, e: React.MouseEvent) => void;
   onSelectTask: (task: TaskWithRelations) => void;
+  onDeleteTask: (taskId: string) => void;
   onAddTask: (stageName: string) => void;
 }
 
@@ -26,6 +27,7 @@ export const KanbanColumn = ({
   expandedCards,
   onToggleExpand,
   onSelectTask,
+  onDeleteTask,
   onAddTask,
 }: KanbanColumnProps) => {
   // Estado local para carga perezosa (Lazy Rendering)
@@ -89,6 +91,7 @@ export const KanbanColumn = ({
                     projectSubTasks={allTasks.filter((t) => t.parentId === task.id)}
                     onToggleExpand={onToggleExpand}
                     onSelectTask={onSelectTask}
+                    onDeleteTask={onDeleteTask}
                   />
                 ))}
 

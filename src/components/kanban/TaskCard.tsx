@@ -2,8 +2,9 @@
 
 import React, { memo } from "react";
 import { Draggable } from "@hello-pangea/dnd";
-import { Package, ChevronDown, ChevronUp, CheckCircle2, PlayCircle, AlertCircle, CheckCheck, XCircle, Percent } from "lucide-react";
-import { TaskWithRelations } from "@/lib/actions/tasks";
+import { Package, ChevronDown, ChevronUp, CheckCircle2, PlayCircle, AlertCircle, CheckCheck, XCircle, Percent, Trash2 } from "lucide-react";
+import { TaskWithRelations, deleteTask } from "@/lib/actions/tasks";
+import Swal from "sweetalert2";
 
 interface TaskCardProps {
   task: TaskWithRelations;
@@ -13,6 +14,7 @@ interface TaskCardProps {
   projectSubTasks: TaskWithRelations[];
   onToggleExpand: (id: string, e: React.MouseEvent) => void;
   onSelectTask: (task: TaskWithRelations) => void;
+  onDeleteTask: (taskId: string) => void;
 }
 
 export const TaskCard = memo(({
@@ -23,9 +25,31 @@ export const TaskCard = memo(({
   projectSubTasks,
   onToggleExpand,
   onSelectTask,
+  onDeleteTask,
 }: TaskCardProps) => {
   const totalSubs = projectSubTasks.length;
   const completedSubs = projectSubTasks.filter(s => s.status === "HECHO").length;
+
+  const handleDeleteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const result = await Swal.fire({
+      title: "¿Eliminar tarea?",
+      text: task.isAssembly 
+        ? "¡Cuidado! Esto eliminará también todas las sub-piezas y tareas vinculadas." 
+        : "Esta acción no se puede deshacer.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      cancelButtonColor: "#94a3b8",
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar"
+    });
+
+    if (result.isConfirmed) {
+      onDeleteTask(task.id);
+      await deleteTask(task.id);
+    }
+  };
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -54,14 +78,23 @@ export const TaskCard = memo(({
                   {task.status === "CANCELADO" && <XCircle size={12} className="text-red-500" />}
                 </div>
               </div>
-              {totalSubs > 0 && (
+              <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={(e) => onToggleExpand(task.id, e)}
-                  className="text-gray-400 hover:text-gray-600 shrink-0 p-0.5 cursor-pointer"
+                  onClick={handleDeleteClick}
+                  className="text-gray-300 hover:text-red-500 rounded p-0.5 transition-colors cursor-pointer"
+                  title="Eliminar tarea"
                 >
-                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <Trash2 size={13} />
                 </button>
-              )}
+                {totalSubs > 0 && (
+                  <button
+                    onClick={(e) => onToggleExpand(task.id, e)}
+                    className="text-gray-400 hover:text-gray-600 shrink-0 p-0.5 cursor-pointer"
+                  >
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                )}
+              </div>
             </div>
 
             {task.isAssembly && (

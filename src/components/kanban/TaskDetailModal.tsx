@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, type TaskWithRelations, type TaskAssignee } from "@/lib/actions/tasks";
-import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent } from "lucide-react";
+import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
+import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2 } from "lucide-react";
+import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
 
 type Stage = { id: string; name: string; color: string }
@@ -20,6 +21,7 @@ type Props = {
   allTasks: TaskWithRelations[]
   onClose: () => void
   onTaskUpdated: (updated: TaskWithRelations) => void
+  onDeleteTask: (taskId: string) => void
 }
 
 /** Convierte un Date o string ISO a input[type=datetime-local] value (YYYY-MM-DDTHH:mm) */
@@ -38,7 +40,7 @@ function fromDateTimeInput(str: string): Date {
   return new Date(str)
 }
 
-export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated }: Props) {
+export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
   const [isPending, startTransition] = useTransition();
   const [selectedStage, setSelectedStage] = useState(task?.stage ?? "");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>(task?.status ?? "EN_PROCESO");
@@ -50,6 +52,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [newSubTaskName, setNewSubTaskName] = useState("");
+
+  // Estados para búsqueda
+  const [parentSearch, setParentSearch] = useState("");
+  const [depSearch, setDepSearch] = useState("");
 
   if (!task) return null;
 
@@ -149,10 +155,57 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     });
   };
 
+  const handleDelete = async () => {
+    if (!task) return;
+
+    const result = await Swal.fire({
+      title: "¿Eliminar esta tarea?",
+      text: task.isAssembly
+        ? "¡Cuidado! Se eliminarán también todas las sub-piezas y tareas vinculadas a este ensamble."
+        : "Esta acción eliminará la pieza definitivamente.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      cancelButtonColor: "#94a3b8",
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar"
+    });
+
+    if (result.isConfirmed) {
+      startTransition(async () => {
+        onDeleteTask(task.id);
+        await deleteTask(task.id);
+        onClose();
+      });
+    }
+  };
+
   const completedSubs = task.subTasks.filter(s => s.status === "HECHO").length;
   const totalSubs = task.subTasks.length;
 
   const availableUsers = users.filter(u => !selectedAssignees.some(a => a.id === u.id));
+
+  // Lógica de filtrado y ordenación para Tarea Padre
+  const otherTasks = allTasks.filter(t => t.id !== task.id);
+
+  const filteredParentTasks = otherTasks
+    .filter(t => t.name.toLowerCase().includes(parentSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (a.id === parentId) return -1;
+      if (b.id === parentId) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  // Lógica de filtrado y ordenación para Dependencias
+  const filteredDepTasks = otherTasks
+    .filter(t => t.name.toLowerCase().includes(depSearch.toLowerCase()))
+    .sort((a, b) => {
+      const aSel = predecessorIds.includes(a.id);
+      const bSel = predecessorIds.includes(b.id);
+      if (aSel && !bSel) return -1;
+      if (!aSel && bSel) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
   return (
     <Dialog open={!!task} onOpenChange={onClose}>
@@ -264,6 +317,49 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 <Input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
             </div>
+            {/* Asignados */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-gray-700">Asignados</Label>
+              <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-xl border border-gray-100 min-h-[42px]">
+                {selectedAssignees.map(a => (
+                  <div key={a.id} className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1 group">
+                    <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[8px]">
+                      {a.name.charAt(0)}
+                    </div>
+                    <span className="text-[10px] font-medium text-gray-700">{a.name.split(" ")[0]}</span>
+                    <button onClick={() => setSelectedAssignees(prev => prev.filter(p => p.id !== a.id))} className="text-gray-300 hover:text-red-500 transition-colors cursor-pointer">
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setShowUserPicker(v => !v)}
+                  className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:bg-blue-50 rounded-lg px-2 py-1 border border-dashed border-blue-200 transition-all cursor-pointer"
+                >
+                  <Plus size={12} /> Añadir
+                </button>
+              </div>
+
+              {showUserPicker && availableUsers.length > 0 && (
+                <div className="absolute z-10 mt-1 border border-gray-100 rounded-xl bg-white shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                  {availableUsers.map(u => (
+                    <button
+                      key={u.id}
+                      onClick={() => { toggleAssignee(u); setShowUserPicker(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2 hover:bg-blue-50 text-left transition-colors border-b last:border-0 border-gray-50 cursor-pointer"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
+                        {u.name.charAt(0)}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-gray-700">{u.name}</span>
+                        <span className="text-[10px] text-gray-400">{u.role}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* COLUMNA DERECHA: Configuración y Relaciones */}
@@ -313,55 +409,19 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Asignados */}
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-gray-700">Asignados</Label>
-              <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 rounded-xl border border-gray-100 min-h-[42px]">
-                {selectedAssignees.map(a => (
-                  <div key={a.id} className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1 group">
-                    <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[8px]">
-                      {a.name.charAt(0)}
-                    </div>
-                    <span className="text-[10px] font-medium text-gray-700">{a.name.split(" ")[0]}</span>
-                    <button onClick={() => setSelectedAssignees(prev => prev.filter(p => p.id !== a.id))} className="text-gray-300 hover:text-red-500 transition-colors cursor-pointer">
-                      <X size={10} />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  onClick={() => setShowUserPicker(v => !v)}
-                  className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:bg-blue-50 rounded-lg px-2 py-1 border border-dashed border-blue-200 transition-all cursor-pointer"
-                >
-                  <Plus size={12} /> Añadir
-                </button>
-              </div>
-
-              {showUserPicker && availableUsers.length > 0 && (
-                <div className="absolute z-10 mt-1 border border-gray-100 rounded-xl bg-white shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                  {availableUsers.map(u => (
-                    <button
-                      key={u.id}
-                      onClick={() => { toggleAssignee(u); setShowUserPicker(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2 hover:bg-blue-50 text-left transition-colors border-b last:border-0 border-gray-50 cursor-pointer"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-[10px] font-bold">
-                        {u.name.charAt(0)}
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-gray-700">{u.name}</span>
-                        <span className="text-[10px] text-gray-400">{u.role}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Tarea Padre / Ensamble */}
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
                 <Package size={14} className="text-purple-500" /> Tarea Padre / Ensamble
               </Label>
+
+              <Input
+                placeholder="Buscar ensamble..."
+                value={parentSearch}
+                onChange={e => setParentSearch(e.target.value)}
+                className="h-8 text-[11px] rounded-lg border-gray-100"
+              />
+
               <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1">
                 <button
                   onClick={() => setParentId(null)}
@@ -373,14 +433,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <span>(Sin Tarea Superior)</span>
                   {parentId === null && <CheckCircle2 size={12} />}
                 </button>
-                {allTasks.filter((t: TaskWithRelations) => t.id !== task.id).map((t: TaskWithRelations) => (
+                {filteredParentTasks.map((t: TaskWithRelations) => (
                   <button
                     key={t.id}
                     onClick={() => setParentId(t.id)}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id
                       ? "bg-purple-50 border-purple-300 text-purple-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2 truncate">
                       {t.isAssembly && <Package size={11} className="text-purple-400 shrink-0" />}
@@ -397,15 +457,23 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
                 <GitBranch size={14} className="text-blue-500" /> Dependencias
               </Label>
+
+              <Input
+                placeholder="Buscar dependencia..."
+                value={depSearch}
+                onChange={e => setDepSearch(e.target.value)}
+                className="h-8 text-[11px] rounded-lg border-gray-100"
+              />
+
               <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1">
-                {allTasks.filter((t: TaskWithRelations) => t.id !== task.id).map((t: TaskWithRelations) => (
+                {filteredDepTasks.map((t: TaskWithRelations) => (
                   <button
                     key={t.id}
                     onClick={() => setPredecessorIds(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${predecessorIds.includes(t.id)
                       ? "bg-blue-50 border-blue-300 text-blue-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2 truncate">
                       {t.isAssembly && <Package size={11} className="text-purple-400 shrink-0" />}
@@ -421,13 +489,25 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
         <Separator className="bg-gray-100" />
 
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl cursor-pointer">
-            Cerrar sin guardar
+        <div className="flex gap-2 justify-between">
+          <Button
+            variant="ghost"
+            onClick={handleDelete}
+            disabled={isPending}
+            className="rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 gap-2 cursor-pointer"
+          >
+            <Trash2 size={16} />
+            Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
           </Button>
-          <Button onClick={handleSave} disabled={isPending} className="rounded-xl bg-blue-600 text-white font-bold px-6 shadow-lg shadow-blue-100 cursor-pointer">
-            {isPending ? "Guardando..." : "Guardar Cambios"}
-          </Button>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl cursor-pointer">
+              Cerrar sin guardar
+            </Button>
+            <Button onClick={handleSave} disabled={isPending} className="rounded-xl bg-blue-600 text-white font-bold px-6 shadow-lg shadow-blue-100 cursor-pointer">
+              {isPending ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

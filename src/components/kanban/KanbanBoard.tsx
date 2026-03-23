@@ -289,7 +289,24 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
         projectId={stages[0]?.projectId ?? ""}
         stages={stages}
         onClose={() => setShowStageManager(false)}
-        onStagesChanged={(updated) => setStages(updated as Stage[])}
+        onStagesChanged={(updated) => {
+          const newStages = updated as Stage[];
+          // Si una etapa cambió de nombre, actualizamos las tareas locales
+          setTasks(prevTasks => {
+            let nextTasks = [...prevTasks];
+            stages.forEach(oldStage => {
+              const newStage = newStages.find(ns => ns.id === oldStage.id);
+              if (newStage && newStage.name !== oldStage.name) {
+                // Se ha renombrado esta etapa
+                nextTasks = nextTasks.map(t => 
+                  t.stage === oldStage.name ? { ...t, stage: newStage.name } : t
+                );
+              }
+            });
+            return nextTasks;
+          });
+          setStages(newStages);
+        }}
         isAdmin={isAdmin}
       />
     </div>

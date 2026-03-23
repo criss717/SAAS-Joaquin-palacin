@@ -20,8 +20,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gantt Project Decanter",
-  description: "Sistema de gestión de fabricación MVP",
+  title: "Gestor Planta JPalacin",
+  description: "Sistema de gestión de fabricación ERP de la empresa Joaquin Palacin S.L.",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default async function RootLayout({
@@ -30,7 +33,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getServerSession(authOptions);
-  
+
   let projects: { id: string; name: string }[] = [];
   if (session?.user) {
     projects = await getProjects();

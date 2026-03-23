@@ -64,7 +64,7 @@ export function Navbar({ projects = [], activeProjectId = null }: { projects?: M
           ) : (
             <Link
               href="/login"
-              className="inline-flex cursor-pointer items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+              className="inline-flex cursor-pointer items-center justify-center rounded-md bg-blue-100 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-200 transition-colors"
             >
               Iniciar Sesión
             </Link>

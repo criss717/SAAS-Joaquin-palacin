@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, ShieldAlert, ShieldCheck, Mail, User, Trash2, Edit2, Eye, EyeOff, Lock } from "lucide-react";
+import { Plus, ShieldAlert, ShieldCheck, Mail, User, Trash2, Edit2, Eye, EyeOff, Lock, Search, ChevronLeft, ChevronRight, XCircle } from "lucide-react";
 import Swal from "sweetalert2";
 import { toast } from "sonner";
 
@@ -32,6 +32,11 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState(""); // For "Email sent" messages
+
+  // Búsqueda y Paginación
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 7;
 
   const openInviteModal = () => {
     setName("");
@@ -165,20 +170,48 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
     }
   };
 
+  // Lógica de filtrado y paginación
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const paginatedUsers = filteredUsers.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val);
+    setCurrentPage(1); // Reset a primera página al buscar
+  };
+
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-between gap-4">
         <div className="flex gap-4">
-          {/* Resumen o filtros rápidos en el futuro */}
           <div className="bg-blue-50 text-blue-800 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
             <User size={16} className="text-blue-500" />
             <span className="text-sm font-bold">Total: {users.length}</span>
           </div>
-          <div className="bg-purple-50 text-purple-800 px-4 py-2 rounded-xl border border-purple-100 flex items-center gap-2">
-            <ShieldCheck size={16} className="text-purple-500" />
-            <span className="text-sm font-bold">Admins: {users.filter(u => u.role === 'ADMIN').length}</span>
-          </div>
         </div>
+
+        <div className="flex-1 max-w-sm relative">
+          <Input
+            placeholder="Buscar por nombre o email..."
+            value={searchTerm}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className={`h-10 pl-10 border-gray-200 rounded-xl transition-all ${searchTerm ? 'border-blue-500 ring-1 ring-blue-500' : ''}`}
+          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          {searchTerm && (
+            <button onClick={() => handleSearchChange("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+              <XCircle size={14} />
+            </button>
+          )}
+        </div>
+
         <Button onClick={openInviteModal} className="bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold rounded-xl ">
           <Plus size={16} className="mr-2" /> Invitar Persona
         </Button>
@@ -195,7 +228,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {users.map((user) => (
+            {paginatedUsers.map((user) => (
               <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                 <td className="px-6 py-4 font-bold text-gray-800 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black">
@@ -232,15 +265,55 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
                 </td>
               </tr>
             ))}
-            {users.length === 0 && (
+            {paginatedUsers.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-6 py-8 text-center text-gray-400 font-medium italic">
-                  No hay usuarios registrados.
+                  {searchTerm ? `No se encontraron usuarios que coincidan con "${searchTerm}"` : "No hay usuarios registrados."}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+
+        {/* Paginación */}
+        {totalPages > 1 && (
+          <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+              Mostrando {Math.min(filteredUsers.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredUsers.length, currentPage * itemsPerPage)} de {filteredUsers.length} resultados
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="h-8 w-8 p-0 rounded-lg border-gray-200 text-gray-500 disabled:opacity-30"
+              >
+                <ChevronLeft size={16} />
+              </Button>
+              <div className="flex items-center gap-1 mx-2">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${currentPage === p ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-100'}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 p-0 rounded-lg border-gray-200 text-gray-500 disabled:opacity-30"
+              >
+                <ChevronRight size={16} />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Invitar Usuario */}
@@ -351,8 +424,8 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
               </div>
               <div className="space-y-2 pl-7">
                 <Label className="text-[10px] font-bold text-gray-400 uppercase">Rol del Sistema</Label>
-                <Select 
-                  value={role} 
+                <Select
+                  value={role}
                   onValueChange={(v) => setRole(v as Role)}
                   disabled={selectedUser?.id === currentUserId}
                 >

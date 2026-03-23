@@ -79,7 +79,7 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
             <Clock className="text-blue-500" /> Temporadas y Turnos
           </h2>
           {!isEditing && (
-            <Button onClick={() => setIsEditing("new")} size="sm" className="rounded-xl bg-blue-600">
+            <Button onClick={() => setIsEditing("new")} size="sm" className="rounded-xl bg-blue-100 text-blue-600 font-bold">
               <Plus size={16} className="mr-2" /> Nueva Temporada
             </Button>
           )}

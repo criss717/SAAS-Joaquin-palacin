@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 export type Operation = { id: string; name: string; estimatedHours: number; orderIndex: number; partId: string };
 export interface Part {
@@ -34,6 +35,11 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
   const [name, setName] = useState("");
   const [qtyOrDays, setQtyOrDays] = useState(1);
   const [loading, setLoading] = useState(false);
+
+  // Estados de Buscador y Paginación
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
 
   // Top level parts
   const rootParts = machine.parts.filter(p => !p.parentId);
@@ -120,15 +126,31 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
     }
   };
 
-  const renderPart = (part: Part, depth: number = 0) => {
+  // Lógica de Filtrado Recursivo
+  const matchesSearch = (part: Part, term: string): boolean => {
+    if (!term) return true;
+    const lowerTerm = term.toLowerCase();
+    // ¿Coincide esta pieza?
+    if (part.name.toLowerCase().includes(lowerTerm)) return true;
+    // ¿Coincide alguna sub-pieza?
     const children = machine.parts.filter(p => p.parentId === part.id);
+    return children.some(c => matchesSearch(c, term));
+  };
+
+  const renderPart = (part: Part, depth: number = 0) => {
+    // Si estamos buscando y esta pieza no coincide ni tiene hijos que coincidan, no renderizamos
+    if (searchTerm && !matchesSearch(part, searchTerm)) return null;
+
+    const children = machine.parts.filter(p => p.parentId === part.id);
+    const isHighlight = searchTerm && part.name.toLowerCase().includes(searchTerm.toLowerCase());
 
     return (
       <div key={part.id} className="border-l-2 border-gray-100 pl-4 py-2 mt-2 relative">
         <div className="absolute -left-6 top-4 w-6 border-t-2 border-gray-100 hidden sm:block"></div>
 
         {/* Encabezado de la Pieza */}
-        <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+        <div className={`bg-white border border-gray-200 shadow-sm rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group transition-all duration-500 ${isHighlight ? 'ring-2 ring-blue-500 bg-blue-50 shadow-blue-100 animate-pulse-subtle' : ''
+          }`}>
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-lg ${depth === 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-50 text-blue-600'}`}>
               <Layers size={18} />
@@ -149,7 +171,7 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
             <Button size="sm" variant="outline" onClick={() => openAddOp(part.id)} className="h-8 text-xs font-semibold text-indigo-600 border-indigo-200 hover:bg-indigo-50 cursor-pointer">
               <Wrench size={12} className="mr-1" /> Operación
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => delPart(part.id, part.name)} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 cursor-pointer">
+            <Button size="sm" variant="ghost" onClick={() => delPart(part.id, part.name)} className="h-8 w-8 p-0 text-red-100 hover:text-red-600 hover:bg-red-50 cursor-pointer">
               <Trash2 size={14} />
             </Button>
           </div>
@@ -183,27 +205,94 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
     );
   };
 
+  // Filtrado y Paginación de rootParts
+  const filteredRootParts = rootParts.filter(p => matchesSearch(p, searchTerm));
+  const totalPages = Math.ceil(filteredRootParts.length / pageSize);
+  const paginatedRootParts = filteredRootParts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <div className="space-y-6 pb-20">
+      <style jsx global>{`
+        @keyframes highlight-pulse-subtle {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.01); box-shadow: 0 0 15px rgba(37, 99, 235, 0.2); }
+          100% { transform: scale(1); }
+        }
+        .animate-pulse-subtle {
+          animation: highlight-pulse-subtle 2s 1s ease-in-out;
+        }
+      `}</style>
+
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <Link href="/catalog" className="text-sm font-bold text-gray-500 hover:text-gray-900 flex items-center">
             <ArrowLeft size={16} className="mr-2" /> Volver al Catálogo
           </Link>
-          <Button onClick={() => openAddPart(null)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
-            <Plus size={16} className="mr-2" /> Pieza Principal
+
+          <div className="flex-1 w-full md:max-w-md relative group">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+            <Input
+              placeholder="Buscar pieza o ensamble..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1); // Reset al buscar
+              }}
+              className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:bg-white bg-gray-50 rounded-xl transition-all font-medium text-gray-700"
+            />
+            {searchTerm && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-lg">
+                {filteredRootParts.length} resultados
+              </div>
+            )}
+          </div>
+
+          <Button onClick={() => openAddPart(null)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl h-11 font-bold whitespace-nowrap">
+            <Plus size={18} className="mr-2" /> Pieza Principal
           </Button>
         </div>
 
-        <div className="space-y-2">
-          {rootParts.length === 0 ? (
+        <div className="space-y-2 min-h-[300px]">
+          {paginatedRootParts.length === 0 ? (
             <div className="text-center py-12 text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
-              No hay piezas definidas para esta máquina. Comienza añadiendo una pieza raíz.
+              {searchTerm ? "No se encontraron coincidencias para tu búsqueda." : "No hay piezas definidas para esta máquina. Comienza añadiendo una pieza raíz."}
             </div>
           ) : (
-            rootParts.map(p => renderPart(p, 0))
+            paginatedRootParts.map(p => renderPart(p, 0))
           )}
         </div>
+
+        {/* Controles de Paginación */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 mt-8 pt-6 border-t border-gray-100">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => p - 1)}
+              className="rounded-xl border-gray-200 h-10 px-4 font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+            >
+              <ChevronLeft size={18} className="mr-1" /> Anterior
+            </Button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-400">Página</span>
+              <span className="h-8 w-8 flex items-center justify-center bg-blue-50 text-blue-600 rounded-lg font-black text-sm">{currentPage}</span>
+              <span className="text-sm font-bold text-gray-400">de</span>
+              <span className="text-sm font-black text-gray-700">{totalPages}</span>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => p + 1)}
+              className="rounded-xl border-gray-200 h-10 px-4 font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+            >
+              Siguiente <ChevronRight size={18} className="ml-1" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Modal Pieza */}

@@ -143,6 +143,9 @@ export async function launchMachineToProject(machineId: string, projectName: str
     const partIdToTaskId = new Map<string, string>();
     const projectStartDate = new Date(startAt);
 
+    // Identificar qué piezas son "Ensambles Reales" (tienen sub-piezas)
+    const parentPartIds = new Set(machine.parts.map(p => p.parentId).filter(Boolean));
+
     // Clonación Recursiva Helper
     async function clonePart(partId: string, parentTaskId?: string) {
       // Definir interfaces locales para Tipado Estricto de los resultados de Prisma
@@ -166,13 +169,13 @@ export async function launchMachineToProject(machineId: string, projectName: str
       const totalOpHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
       const endDate = engine.addBusinessHours(projectStartDate, Math.max(8, totalOpHours)); 
 
-      // Crear la Tarea/Ensamble
+      // Crear la Tarea/Ensamble (isAssembly dinámico basado en si es padre)
       const newTaskPart = await prisma.task.create({
         data: {
           name: part.name + (part.quantity > 1 ? ` (x${part.quantity})` : ""),
           projectId: project.id,
           parentId: parentTaskId,
-          isAssembly: true,
+          isAssembly: parentPartIds.has(part.id), // DINÁMICO
           stage: part.preferredStage || "Pendiente",
           status: "EN_PROCESO", 
           startDate: projectStartDate,
@@ -302,7 +305,8 @@ export async function importMachineFromExcel(formData: FormData) {
           preferredStage: r.etapa,
         }
       });
-      partNameToId.set(r.nombre, part.id);
+      // Guardamos la clave en minúsculas para comparaciones robustas
+      partNameToId.set(r.nombre.toLowerCase(), part.id);
 
       // Crear operación por defecto "Fabricar [Nombre]"
       await prisma.catalogOperation.create({
@@ -316,13 +320,16 @@ export async function importMachineFromExcel(formData: FormData) {
       });
     }
 
-    // 5. Segunda pasada: Vincular jerarquías
+    // 5. Segunda pasada: Vincular jerarquías (con búsqueda insensible a mayúsculas)
     for (const r of rows) {
-      if (r.parentName && partNameToId.has(r.parentName)) {
-        await prisma.catalogPart.update({
-          where: { id: partNameToId.get(r.nombre) },
-          data: { parentId: partNameToId.get(r.parentName) }
-        });
+      if (r.parentName) {
+        const parentKey = r.parentName.toLowerCase();
+        if (partNameToId.has(parentKey)) {
+          await prisma.catalogPart.update({
+            where: { id: partNameToId.get(r.nombre.toLowerCase()) },
+            data: { parentId: partNameToId.get(parentKey) }
+          });
+        }
       }
     }
 

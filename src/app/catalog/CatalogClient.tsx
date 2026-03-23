@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createMachine, deleteMachine, launchMachineToProject, importMachineFromExcel, updateMachine } from "@/lib/actions/catalog";
-import { Plus, Trash2, Settings, ChevronRight, Play, Edit2 } from "lucide-react";
+import { Plus, Trash2, Settings, ChevronRight, Play } from "lucide-react";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
@@ -163,7 +163,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
           <Button variant="outline" onClick={() => document.getElementById('excel-import')?.click()} disabled={loading} className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 rounded-xl font-bold">
             Importar Excel
           </Button>
-          <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl ">
+          <Button onClick={() => setIsModalOpen(true)} className="bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-xl font-bold">
             <Plus size={16} className="mr-2" /> Nueva Máquina
           </Button>
         </div>
@@ -173,20 +173,17 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
         {machines.map((machine) => (
           <div key={machine.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col">
             <div className="flex justify-between items-start mb-4">
-              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+              <div title="Editar máquina" onClick={() => handleEdit(machine)} className="p-3 cursor-pointer bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100">
                 <Settings size={24} />
               </div>
               <div className="flex gap-1">
-                <Button variant="ghost" size="icon" onClick={() => handleEdit(machine)} className="text-gray-400 hover:text-blue-600 hover:bg-blue-50">
-                  <Edit2 size={16} />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(machine.id, machine.name)} className="text-gray-400 hover:text-red-600 hover:bg-red-50">
+                <Button title="Eliminar máquina" variant="ghost" size="icon" onClick={() => handleDelete(machine.id, machine.name)} className="text-gray-400 hover:text-red-600 hover:bg-red-50">
                   <Trash2 size={16} />
                 </Button>
               </div>
             </div>
 
-            <h3 className="text-lg font-bold text-gray-900 mb-1">{machine.name}</h3>
+            <h3 onClick={() => router.push(`/catalog/${machine.id}`)} className="text-lg hover:underline cursor-pointer font-bold text-gray-900 mb-1">{machine.name}</h3>
             <p className="text-sm text-gray-500 line-clamp-2 min-h-[40px] mb-4">
               {machine.description || "Sin descripción proporcionada."}
             </p>

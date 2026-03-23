@@ -117,7 +117,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
             <span className="text-sm font-bold">Admins: {users.filter(u => u.role === 'ADMIN').length}</span>
           </div>
         </div>
-        <Button onClick={openInviteModal} className="bg-blue-600 hover:bg-blue-700 cursor-pointer text-white rounded-xl ">
+        <Button onClick={openInviteModal} className="bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold rounded-xl ">
           <Plus size={16} className="mr-2" /> Invitar Persona
         </Button>
       </div>

@@ -39,8 +39,7 @@ export function Navbar({ projects = [], activeProjectId = null }: { projects?: M
 
           {session && (
             <div className="hidden lg:flex space-x-1 ml-4 border-l border-gray-200 pl-4">
-              {navLink("/", "Tablero Kanban")}
-              {navLink("/gantt", "Gantt")}
+              {navLink("/", "Tablero Producción")}
               {session.user?.role === "ADMIN" && navLink("/catalog", "Catálogo")}
               {session.user?.role === "ADMIN" && navLink("/admin/schedule", "Calendario")}
               {session.user?.role === "ADMIN" && navLink("/admin", "Administración")}

@@ -290,7 +290,21 @@ export async function createTask(data: {
 /** Crea un nuevo proyecto — solo ADMIN */
 export async function createProject(data: { name: string; stage?: string }) {
   await requireAdmin()
-  const project = await prisma.project.create({ data })
+  const project = await prisma.project.create({ 
+    data: {
+      ...data,
+      stages: {
+        create: [
+          { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
+          { name: "Ensambles", color: "#a855f7", order: 1 },
+          { name: "Piezas / Accesorios", color: "#9ca3af", order: 2 },
+          { name: "Pedido Externo", color: "#ef4444", order: 3 },
+          { name: "Fabricación Taller", color: "#3b82f6", order: 4 },
+          { name: "Listo", color: "#22c55e", order: 5 },
+        ]
+      }
+    } 
+  })
   revalidatePath("/")
   return project
 }

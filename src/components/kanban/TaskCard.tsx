@@ -117,45 +117,51 @@ export const TaskCard = memo(({
                     style={{ width: `${(completedSubs / totalSubs) * 100}%`, backgroundColor: columnColor }}
                   />
                 </div>
-                {isExpanded && (
-                  <ul className="mt-2 space-y-1">
-                    {projectSubTasks.map(sub => (
-                      <li
-                        key={sub.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectTask(sub);
-                        }}
-                        className="flex items-center justify-between gap-1.5 text-[11px] text-gray-600 p-1.5 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors group/sub"
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-gray-300"}`} />
-                          <span className="truncate group-hover/sub:text-blue-600 transition-colors font-medium">{sub.name}</span>
+                <ul className="mt-2 space-y-1">
+                  {projectSubTasks.slice(0, isExpanded ? undefined : 2).map(sub => (
+                    <li
+                      key={sub.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectTask(sub);
+                      }}
+                      className="flex items-center justify-between gap-1.5 text-[11px] text-gray-600 p-1.5 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors group/sub"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-gray-300"}`} />
+                        <span className="truncate group-hover/sub:text-blue-600 transition-colors font-medium">{sub.name}</span>
+                      </div>
+                      {/* Asignados miniatura de la sub-tarea */}
+                      {sub.assignees.length > 0 && (
+                        <div className="flex gap-[1.1px] shrink-0 ml-1.5">
+                          {sub.assignees.slice(0, 3).map(a => (
+                            <div
+                              key={a.id}
+                              title={a.name}
+                              className="w-[16px] h-[16px] rounded-full ring-1 ring-white flex items-center justify-center text-white font-bold text-[8px] shadow-sm"
+                              style={{ backgroundColor: columnColor }}
+                            >
+                              {a.name.charAt(0)}
+                            </div>
+                          ))}
+                          {sub.assignees.length > 3 && (
+                            <div className="w-[16px] h-[16px] rounded-full ring-1 ring-white bg-gray-200 flex items-center justify-center text-gray-600 text-[8px] font-bold shadow-sm">
+                              +{sub.assignees.length - 3}
+                            </div>
+                          )}
                         </div>
-                        {/* Asignados miniatura de la sub-tarea */}
-                        {sub.assignees.length > 0 && (
-                          <div className="flex gap-[1.1px] shrink-0 ml-1.5">
-                            {sub.assignees.slice(0, 3).map(a => (
-                              <div
-                                key={a.id}
-                                title={a.name}
-                                className="w-[16px] h-[16px] rounded-full ring-1 ring-white flex items-center justify-center text-white font-bold text-[8px] shadow-sm"
-                                style={{ backgroundColor: columnColor }}
-                              >
-                                {a.name.charAt(0)}
-                              </div>
-                            ))}
-                            {sub.assignees.length > 3 && (
-                              <div className="w-[16px] h-[16px] rounded-full ring-1 ring-white bg-gray-200 flex items-center justify-center text-gray-600 text-[8px] font-bold shadow-sm">
-                                +{sub.assignees.length - 3}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                      )}
+                    </li>
+                  ))}
+                  {!isExpanded && totalSubs > 2 && (
+                    <li 
+                      className="text-[10px] text-gray-400 font-medium text-center pt-1 pb-0.5 cursor-pointer hover:text-gray-600 transition-colors"
+                      onClick={(e) => onToggleExpand(task.id, e)}
+                    >
+                      + {totalSubs - 2} tareas más...
+                    </li>
+                  )}
+                </ul>
               </div>
             )}
 

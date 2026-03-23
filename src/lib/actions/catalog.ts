@@ -10,22 +10,27 @@ const NORM_STAGES: Record<string, string> = {
   "planeacion": "Planeación y Diseño",
   "diseño": "Planeación y Diseño",
   "diseno": "Planeación y Diseño",
-  "pendiente": "Pendiente",
+  "piezas": "Piezas / Accesorios",
+  "accesorios": "Piezas / Accesorios",
+  "pendiente": "Piezas / Accesorios",
   "pedido": "Pedido Externo",
   "externo": "Pedido Externo",
+  "proveedor": "Pedido Externo",
   "taller": "Fabricación Taller",
   "fabricacion": "Fabricación Taller",
+  "ensambles": "Ensambles",
+  "ensamble": "Ensambles",
   "listo": "Listo",
   "terminado": "Listo"
 };
 
 function normalizeStageName(input: string): string {
   const low = (input || "").toLowerCase().trim();
-  if (!low) return "Pendiente";
+  if (!low) return "Piezas / Accesorios";
   for (const [key, val] of Object.entries(NORM_STAGES)) {
     if (low.includes(key)) return val;
   }
-  return "Pendiente";
+  return "Piezas / Accesorios";
 }
 
 export async function getMachines() {
@@ -133,10 +138,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
         stages: {
           create: [
             { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
-            { name: "Pendiente", color: "#94a3b8", order: 1 },
-            { name: "Pedido Externo", color: "#8b5cf6", order: 2 },
-            { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
-            { name: "Listo", color: "#22c55e", order: 4 },
+            { name: "Ensambles", color: "#a855f7", order: 1 },
+            { name: "Piezas / Accesorios", color: "#9ca3af", order: 2 },
+            { name: "Pedido Externo", color: "#ef4444", order: 3 },
+            { name: "Fabricación Taller", color: "#3b82f6", order: 4 },
+            { name: "Listo", color: "#22c55e", order: 5 },
           ]
         }
       }
@@ -271,7 +277,7 @@ export async function importMachineFromExcel(formData: FormData) {
     });
 
     // 3. Mapeo temporal para jerarquías y filas
-    const rows: { nombre: string; cantidad: number; parentName: string; horas: number; etapa: string }[] = [];
+    const rows: { nombre: string; cantidad: number; parentName: string; horas: number; etapa: string; plazo: number }[] = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
       const item: Record<string, ExcelJS.CellValue> = {};
@@ -280,7 +286,7 @@ export async function importMachineFromExcel(formData: FormData) {
         if (h) item[h] = cell.value;
       });
 
-      const horasValue = item.horas;
+      const horasValue = item.horas || item["horas-unidad"] || item["horas unidad"];
       let horas = 0;
       if (horasValue && typeof horasValue === "object" && "result" in (horasValue as ExcelJS.CellFormulaValue)) {
         horas = Number((horasValue as ExcelJS.CellFormulaValue).result) || 0;
@@ -288,12 +294,16 @@ export async function importMachineFromExcel(formData: FormData) {
         horas = Number(horasValue) || 0;
       }
 
+      const plazoValue = item["plazo-entrega-dias"] || item["plazo entrega dias"] || item["plazo entrega"];
+      const plazo = Number(plazoValue) || 1;
+
       rows.push({
         nombre: item.nombre?.toString().trim() || "Sin nombre",
         cantidad: Number(item.cantidad) || 1,
         parentName: item["pertenece a ensamble"]?.toString().trim() || "",
         horas: horas,
-        etapa: normalizeStageName(item["etapa inicial"]?.toString() || "")
+        etapa: normalizeStageName(item["etapa inicial"]?.toString() || ""),
+        plazo: plazo > 0 ? plazo : 1
       });
     });
 
@@ -305,22 +315,25 @@ export async function importMachineFromExcel(formData: FormData) {
           name: r.nombre,
           machineId: machine.id,
           quantity: r.cantidad,
-          preferredStage: r.etapa,
+          preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Piezas / Accesorios",
         }
       });
       // Guardamos la clave en minúsculas para comparaciones robustas
       partNameToId.set(r.nombre.toLowerCase(), part.id);
 
-      // Crear operación por defecto "Fabricar [Nombre]"
-      await prisma.catalogOperation.create({
-        data: {
-          name: `Fabricar ${r.nombre}`,
-          partId: part.id,
-          estimatedHours: r.horas > 0 ? r.horas : 8,
-          preferredStage: r.etapa,
-          orderIndex: 0
-        }
-      });
+      // Crear operación por defecto solo si NO es "Pedido Externo"
+      if (r.etapa !== "Pedido Externo") {
+        await prisma.catalogOperation.create({
+          data: {
+            name: `Fabricar ${r.nombre}${r.cantidad > 1 ? ` (x${r.cantidad})` : ''}`,
+            partId: part.id,
+            // Las horas de fabricación se multiplican por la cantidad
+            estimatedHours: Math.max(0.5, r.horas * r.cantidad), 
+            preferredStage: "Fabricación Taller",
+            orderIndex: 0
+          }
+        });
+      }
     }
 
     // 5. Segunda pasada: Vincular jerarquías (con búsqueda insensible a mayúsculas)
@@ -328,9 +341,18 @@ export async function importMachineFromExcel(formData: FormData) {
       if (r.parentName) {
         const parentKey = r.parentName.toLowerCase();
         if (partNameToId.has(parentKey)) {
+          const childId = partNameToId.get(r.nombre.toLowerCase());
+          const parentId = partNameToId.get(parentKey);
+          
           await prisma.catalogPart.update({
-            where: { id: partNameToId.get(r.nombre.toLowerCase()) },
-            data: { parentId: partNameToId.get(parentKey) }
+            where: { id: childId },
+            data: { parentId: parentId }
+          });
+
+          // Si una pieza tiene hijos, la convertimos automáticamente en Ensamble
+          await prisma.catalogPart.update({
+            where: { id: parentId },
+            data: { preferredStage: "Ensambles" }
           });
         }
       }

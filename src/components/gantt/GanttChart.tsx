@@ -3,11 +3,15 @@
 import { useState } from "react";
 import { Gantt, Task, ViewMode } from "@rsagiev/gantt-task-react-19";
 import "@rsagiev/gantt-task-react-19/dist/index.css";
-import { updateTaskDates, TaskWithRelations } from "@/lib/actions/tasks";
+import { TaskWithRelations } from "@/lib/actions/tasks";
 
 type GroupByMode = 'none' | 'stage' | 'status' | 'user';
 
-type Props = { initialTasks: TaskWithRelations[] };
+type Props = { 
+  tasks: TaskWithRelations[];
+  onTaskDatesChange?: (taskId: string, start: Date, end: Date) => void;
+  onTaskDoubleClick?: (task: TaskWithRelations) => void;
+};
 
 interface GroupedTask extends Task {
   stage?: string;
@@ -55,7 +59,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
       name: t.name,
       start: new Date(t.startDate),
       end: new Date(t.endDate),
-      type: "task", // Cambiado de project a task para permitir arrastre
+      type: t.isAssembly ? "project" : "task", // Assemblies as project for auto-resize, leaves as task for dragging
       progress: progress,
       dependencies: t.predecessors.map(p => p.predecessor.id),
       project: groupBy === 'none' ? (t.parentId ?? undefined) : undefined,
@@ -117,8 +121,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
   return finalTasks;
 }
 
-export function GanttChart({ initialTasks }: Props) {
-  const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks);
+export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
   const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
@@ -130,14 +133,16 @@ export function GanttChart({ initialTasks }: Props) {
     if (isNaN(ganttTask.start.getTime()) || isNaN(ganttTask.end.getTime())) return
     if (ganttTask.end < ganttTask.start) return
 
-    setTasks(prev =>
-      prev.map(t =>
-        t.id === ganttTask.id
-          ? { ...t, startDate: ganttTask.start, endDate: ganttTask.end }
-          : t
-      )
-    )
-    await updateTaskDates(ganttTask.id, ganttTask.start, ganttTask.end)
+    if (onTaskDatesChange) {
+      onTaskDatesChange(ganttTask.id, ganttTask.start, ganttTask.end);
+    }
+  }
+
+  const handleDblClick = (task: Task) => {
+    if (onTaskDoubleClick) {
+      const originalTask = tasks.find(t => t.id === task.id);
+      if (originalTask) onTaskDoubleClick(originalTask);
+    }
   }
 
   const viewButtons: { label: string; mode: ViewMode }[] = [
@@ -215,6 +220,7 @@ export function GanttChart({ initialTasks }: Props) {
             tasks={ganttTasks}
             viewMode={viewMode}
             onDateChange={handleTaskChange}
+            onDoubleClick={handleDblClick}
             locale="es"
             fontFamily="var(--font-outfit), Inter, sans-serif"
             listCellWidth="200px"

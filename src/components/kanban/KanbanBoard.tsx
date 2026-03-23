@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { KanbanColumn } from "./KanbanColumn";
+import { GanttChart } from "@/components/gantt/GanttChart";
+import { updateTaskDates } from "@/lib/actions/tasks";
 
 type Stage = { id: string; name: string; color: string; order: number; projectId: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -35,11 +37,11 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   const [showStageManager, setShowStageManager] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [filterStatus, setFilterStatus] = useState("");
-  const [filterAssignee, setFilterAssignee] = useState("ALL");
+  const [filterAssignee, setFilterAssignee] = useState("");
   const [searchTask, setSearchTask] = useState("");
   const [preSelectedStage, setPreSelectedStage] = useState<string | undefined>(undefined);
   const [showDone, setShowDone] = useState(true);
-
+  const [viewMode, setViewMode] = useState<"kanban" | "gantt">("kanban");
 
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
@@ -152,89 +154,137 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
     }
   };
 
+  // Filtrado compartido para ambas vistas
+  const filteredTasks = tasks.filter(t => {
+    const matchesSearch = searchTask === "" || t.name.toLowerCase().includes(searchTask.toLowerCase());
+    const matchesStatus = filterStatus === "" || t.status === filterStatus;
+    const matchesAssignee = filterAssignee === "" || t.assignees.some(a => a.id === filterAssignee);
+    const matchesDone = showDone || t.status !== "HECHO";
+    return matchesSearch && matchesStatus && matchesAssignee && matchesDone;
+  });
+
   return (
     <div className="flex flex-col h-full">
-      {/* Barra superior */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex  items-center gap-3 text-sm text-gray-500">
-          <span><strong className="text-gray-800">{stages.length}</strong> etapas</span>
-          <span>·</span>
-          <span><strong className="text-gray-800">{tasks.length}</strong> tareas</span>
+      {/* Cabecera Superior: Stats + Switch + Proyecto */}
+      {/* Cabecera Superior: Proyecto + Switch (A la izquierda) */}
+      <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100">
+        <div className="flex items-center gap-4">
+
+          <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all duration-200 cursor-pointer ${viewMode === "kanban"
+                ? "bg-white text-blue-600 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+                }`}
+            >
+              Tablero
+            </button>
+            <button
+              onClick={() => setViewMode("gantt")}
+              className={`px-4 py-1.5 text-[11px] font-bold rounded-lg transition-all duration-200 cursor-pointer ${viewMode === "gantt"
+                ? "bg-white text-blue-600 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+                }`}
+            >
+              Gantt
+            </button>
+          </div>
         </div>
-        <div className="flex ml-auto relative">
+
+        {/* Espacio reservado para botones de acción secundarios si fuesen necesarios */}
+        <div className="flex gap-2">
+          {isAdmin && (
+            <Button variant="ghost" onClick={() => setShowStageManager(true)} className="h-8 rounded-lg text-gray-400 hover:text-gray-600 font-bold px-3 text-[10px] transition-all uppercase tracking-wider">
+              <Settings2 size={12} className="mr-1.5" /> Gestionar Etapas
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Barra de Filtros: Stats + Search + Filtros (TODO EN UNA LÍNEA) */}
+      <div className="flex items-center gap-3 mb-5 shrink-0">
+        {/* Stats compactas integradas */}
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 font-bold bg-white px-3 h-9 rounded-xl border border-gray-100 shadow-sm shrink-0 uppercase tracking-tighter">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <span>ETAPAS:</span>
+            <span className="text-gray-800">{stages.length}</span>
+          </div>
+          <div className="w-px h-3 bg-gray-200" />
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <span>TOTAL:</span>
+            <span className="text-gray-800">{tasks.length}</span>
+          </div>
+          <div className="w-px h-3 bg-gray-200" />
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className="text-blue-400">FILTRADAS:</span>
+            <span className="text-blue-600">{filteredTasks.length}</span>
+          </div>
+        </div>
+
+        <div className="md:ml-100 ml-10 flex-1 relative">
           <Input
-            placeholder="Buscar tarea / pieza / ensamble..."
+            placeholder="Buscar tarea, pieza o componente..."
             value={searchTask}
             onChange={(e) => setSearchTask(e.target.value)}
-            className={`w-[400px] pr-8 transition-colors ${searchTask ? "border-b-2 border-blue-600 border-l-0 border-r-0 border-t-0" : ""}`}
+            className={`h-9 text-xs pl-3 pr-8 border-gray-200 rounded-xl transition-all focus:ring-2 focus:ring-blue-100 ${searchTask ? "border-blue-400" : ""}`}
           />
           {searchTask && (
             <button
               onClick={() => setSearchTask("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 cursor-pointer p-1"
-              title="Limpiar búsqueda"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 cursor-pointer p-0.5"
             >
-              <X size={16} />
+              <X size={14} />
             </button>
           )}
         </div>
-        <div className="flex gap-2 ml-auto">
-          <div className="w-[190px]">
-            <Select
-              value={filterAssignee}
-              onValueChange={(v) => setFilterAssignee(v ?? "")}
-            >
-              <SelectTrigger className={`cursor-pointer w-full ${filterAssignee === "ALL" ? "text-gray-500" : "text-gray-800"}`}>
-                <SelectValue placeholder="Filtrar por responsable" >
-                  {filterAssignee === "ALL" ? "Todos los responsables" : users.find(u => u.id === filterAssignee)?.name}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los responsables</SelectItem>
-                {users.map(u => (
-                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-[160px]">
-            <Select
-              value={filterStatus}
-              onValueChange={(e) => setFilterStatus(e ?? "")}
-            >
-              <SelectTrigger className="cursor-pointer w-full">
-                <SelectValue placeholder="Filtrar por estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
-                <SelectItem value="EN_PROCESO">En Proceso</SelectItem>
-                <SelectItem value="CAMBIOS_SOLICITADOS">Cambios Solicitados</SelectItem>
-                <SelectItem value="HECHO">Hecho</SelectItem>
-                <SelectItem value="APROBADO">Aprobado</SelectItem>
-                <SelectItem value="CANCELADO">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-gray-50 rounded-lg border border-gray-100">
-            <input
-              id="hide-done"
-              type="checkbox"
-              checked={!showDone}
-              onChange={() => setShowDone(!showDone)}
-              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-            />
-            <label htmlFor="hide-done" className="text-[11px] font-bold text-gray-500 uppercase cursor-pointer select-none">
-              Ocultar terminadas
-            </label>
-          </div>
-          <Button onClick={() => setShowCreateTask(true)} className="text-sm gap-1.5 cursor-pointer">
-            <Plus size={14} /> Nueva Tarea
+
+        <div className="w-[180px]">
+          <Select value={filterAssignee} onValueChange={(v) => setFilterAssignee(v ?? "")}>
+            <SelectTrigger className={`h-9 text-xs cursor-pointer rounded-xl border-gray-200 text-gray-700`}>
+              <SelectValue placeholder="Responsable" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="" className="text-xs">Todos los responsables</SelectItem>
+              {users.map(u => <SelectItem key={u.id} value={u.id} className="text-xs">{u.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-[160px]">
+          <Select value={filterStatus} onValueChange={(e) => setFilterStatus(e ?? "")}>
+            <SelectTrigger className={`h-9 text-xs cursor-pointer rounded-xl border-gray-200 text-gray-700`}>
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="" className="text-xs">Todos los estados</SelectItem>
+              <SelectItem value="EN_PROCESO" className="text-xs">En Proceso</SelectItem>
+              <SelectItem value="CAMBIOS_SOLICITADOS" className="text-xs">Cambios</SelectItem>
+              <SelectItem value="HECHO" className="text-xs">Listo</SelectItem>
+              <SelectItem value="APROBADO" className="text-xs">Aprobado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 h-9 bg-gray-50/50 rounded-xl border border-gray-100 transition-all hover:bg-white hover:border-blue-100 shrink-0">
+          <input
+            id="hide-done"
+            type="checkbox"
+            checked={!showDone}
+            onChange={() => setShowDone(!showDone)}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+          />
+          <label htmlFor="hide-done" className="text-[10px] font-bold text-gray-400 uppercase cursor-pointer select-none tracking-tight whitespace-nowrap">
+            Ocultar hechos
+          </label>
+        </div>
+
+        <div className="w-px h-6 bg-gray-100 mx-1 shrink-0" />
+
+        <div className="flex gap-2 shrink-0">
+          <Button onClick={() => setShowCreateTask(true)} className="h-9 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-700 font-bold px-4 text-xs shadow-sm shadow-blue-200/50 border-0 transition-all">
+            <Plus size={14} className="mr-1.5" strokeWidth={3} /> Nueva Tarea
           </Button>
-          {isAdmin && (
-            <Button variant="outline" onClick={() => setShowStageManager(true)} className="text-sm gap-1.5 cursor-pointer">
-              <Settings2 size={14} /> Etapas
-            </Button>
-          )}
         </div>
       </div>
 
@@ -247,6 +297,17 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
               Crear primera etapa →
             </button>
           )}
+        </div>
+      ) : viewMode === "gantt" ? (
+        <div className="w-full flex-1 min-h-[500px] bg-white border rounded-2xl shadow-sm overflow-hidden p-3 border-gray-100">
+          <GanttChart
+            tasks={filteredTasks}
+            onTaskDatesChange={async (id, start, end) => {
+              setTasks(prev => prev.map(t => t.id === id ? { ...t, startDate: start, endDate: end } : t));
+              await updateTaskDates(id, start, end);
+            }}
+            onTaskDoubleClick={(task) => setSelectedTask(task)}
+          />
         </div>
       ) : (
         <DragDropContext onDragEnd={onDragEnd}>
@@ -261,13 +322,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
                 {stages
                   .filter(col => showDone || (!col.name.toLowerCase().includes("listo") && !col.name.toLowerCase().includes("terminado")))
                   .map((column, colIndex) => {
-                    const columnTasks = tasks.filter(t =>
-                      t.stage === column.name &&
-                      (showDone || t.status !== "HECHO") &&
-                      (filterStatus === "" || t.status === filterStatus) &&
-                      (filterAssignee === "" || filterAssignee === "ALL" || t.assignees.some(a => a.id === filterAssignee)) &&
-                      (searchTask === "" || t.name.toLowerCase().includes(searchTask.toLowerCase()))
-                    ).sort((a, b) => a.orderIndex - b.orderIndex);
+                    const columnTasks = filteredTasks.filter(t => t.stage === column.name);
 
                     return (
                       <KanbanColumn

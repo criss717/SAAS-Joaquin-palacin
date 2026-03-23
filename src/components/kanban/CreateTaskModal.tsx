@@ -90,6 +90,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
         endDate: task.endDate,
         projectId: task.projectId,
         parentId: task.parentId,
+        orderIndex: task.orderIndex,
         assignees: users.filter((u: User) => assigneeIds.includes(u.id)).map((u: User) => ({ id: u.id, name: u.name })),
         subTasks: [],
         predecessors: predecessorIds.map((id: string) => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
@@ -356,7 +357,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
           <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl border-gray-200 font-bold px-6 cursor-pointer">
             Cancelar
           </Button>
-          <Button onClick={handleCreate} disabled={isPending || !name.trim()} className="rounded-xl bg-blue-600 text-white font-black px-8 hover:bg-blue-700 transition-all cursor-pointer">
+          <Button onClick={handleCreate} disabled={isPending || !name.trim()} className="rounded-xl bg-blue-100 text-blue-600 font-black px-8 hover:bg-blue-200 transition-all cursor-pointer">
             {isPending ? "Creando…" : <><Plus size={16} className="mr-2" strokeWidth={3} /> Crear Tarea</>}
           </Button>
         </div>

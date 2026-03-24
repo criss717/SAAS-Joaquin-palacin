@@ -169,6 +169,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
         quantity: number;
         parentId: string | null;
         preferredStage?: string | null;
+        deliveryDays?: number | null;
         operations: CatalogOp[];
       }
 
@@ -188,8 +189,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
           stage: part.preferredStage || "Pendiente",
           status: "EN_PROCESO", 
           startDate: projectStartDate,
-          endDate: endDate,
+          endDate: (part.preferredStage === "Pedido Externo" && (part.deliveryDays || 0) > 0)
+            ? new Date(new Date(projectStartDate).setDate(new Date(projectStartDate).getDate() + (part.deliveryDays || 0)))
+            : endDate,
           estimatedHours: totalOpHours || 8,
+          deliveryDays: part.deliveryDays || 0,
         }
       });
       
@@ -316,6 +320,7 @@ export async function importMachineFromExcel(formData: FormData) {
           machineId: machine.id,
           quantity: r.cantidad,
           preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Piezas / Accesorios",
+          deliveryDays: r.etapa === "Pedido Externo" ? r.plazo : 0,
         }
       });
       // Guardamos la clave en minúsculas para comparaciones robustas
@@ -407,6 +412,7 @@ export async function cloneMachine(machineId: string) {
           name: part.name,
           quantity: part.quantity,
           preferredStage: part.preferredStage,
+          deliveryDays: part.deliveryDays,
           machineId: newMachine.id,
           parentId: newParentId,
         }

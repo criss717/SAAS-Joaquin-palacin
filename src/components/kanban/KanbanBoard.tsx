@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   DragDropContext, Droppable, DropResult,
 } from "@hello-pangea/dnd";
@@ -33,6 +33,15 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks);
   const [stages, setStages] = useState<Stage[]>(initialStages);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const scrollMirrorRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Sincronización de scroll duplicado (Superior <-> Inferior)
+  const syncScroll = (from: React.RefObject<HTMLDivElement | null>, to: React.RefObject<HTMLDivElement | null>) => {
+    if (from.current && to.current) {
+      to.current.scrollLeft = from.current.scrollLeft;
+    }
+  };
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [showStageManager, setShowStageManager] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -217,17 +226,17 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           </div>
           <div className="w-px h-3 bg-gray-200" />
           <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <span className="text-blue-400">FILTRADAS:</span>
-            <span className="text-blue-600">{filteredTasks.length}</span>
+            <span className="text-gray-400">FILTRADAS:</span>
+            <span className="text-gray-600">{filteredTasks.length}</span>
           </div>
         </div>
 
-        <div className="md:ml-100 ml-10 flex-1 relative">
+        <div className="2xl:ml-80 ml-5 flex-1 relative w-full">
           <Input
             placeholder="Buscar tarea, pieza o componente..."
             value={searchTask}
             onChange={(e) => setSearchTask(e.target.value)}
-            className={`h-9 text-xs pl-3 pr-8 border-gray-200 rounded-xl transition-all focus:ring-2 focus:ring-blue-100 ${searchTask ? "border-blue-400" : ""}`}
+            className={`h-9 text-xs pl-3 pr-8 w-full border-gray-200 rounded-xl transition-all focus:ring-2 focus:ring-blue-100 ${searchTask ? "border-blue-400" : ""}`}
           />
           {searchTask && (
             <button
@@ -239,54 +248,95 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           )}
         </div>
 
-        <div className="w-[180px]">
-          <Select value={filterAssignee} onValueChange={(v) => setFilterAssignee(v ?? "")}>
-            <SelectTrigger className={`h-9 text-xs cursor-pointer rounded-xl border-gray-200 text-gray-700`}>
-              <SelectValue placeholder="Responsable" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="" className="text-xs">Todos los responsables</SelectItem>
-              {users.map(u => <SelectItem key={u.id} value={u.id} className="text-xs">{u.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        <div className="flex gap-2 w-full max-w-[600px] justify-end items-center">
+          <div className="w-[180px] max-w-[180px]">
+            <Select value={filterAssignee} onValueChange={(v) => setFilterAssignee(v ?? "")}>
+              <SelectTrigger className={`h-9 text-xs w-full cursor-pointer rounded-xl border-gray-200 text-gray-700`}>
+                <SelectValue placeholder="Responsable">
+                  {filterAssignee === "" ? "Todos los responsables" : users.find(u => u.id === filterAssignee)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} sideOffset={4} className="rounded-xl font-medium">
+                <SelectItem value="" className="text-xs">Todos los responsables</SelectItem>
+                {users.map(u => <SelectItem key={u.id} value={u.id} className="text-xs">{u.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-[160px]">
+            <Select value={filterStatus} onValueChange={(e) => setFilterStatus(e ?? "")}>
+              <SelectTrigger className="h-9 w-full text-xs cursor-pointer rounded-xl border-gray-200 text-gray-700">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} sideOffset={4} className="rounded-xl w-full font-medium">
+                <SelectItem value="" className="text-xs">Todos los estados</SelectItem>
+                <SelectItem value="EN_PROCESO" className="text-xs">En Proceso</SelectItem>
+                <SelectItem value="CAMBIOS" className="text-xs">Cambios</SelectItem>
+                <SelectItem value="HECHO" className="text-xs">Listo</SelectItem>
+                <SelectItem value="APROBADO" className="text-xs">Aprobado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center w-[130px] gap-2 px-3 h-9 bg-gray-50/50 rounded-xl border border-gray-100 transition-all hover:bg-white hover:border-blue-100 shrink-0">
+            <input
+              id="hide-done"
+              type="checkbox"
+              checked={!showDone}
+              onChange={() => setShowDone(!showDone)}
+              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <label htmlFor="hide-done" className={`text-[10px] font-bold text-gray-400 uppercase cursor-pointer select-none tracking-tight whitespace-nowrap ${showDone && 'font-medium'}`}>
+              Ocultar hechos
+            </label>
+          </div>
+
+          <style jsx global>{`
+          .custom-scrollbar::-webkit-scrollbar {
+            height: 8px !important;
+          }
+          .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9 !important;
+            border-radius: 10px !important;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d4d5d6 !important; /* Azul más vivo para confirmar que se aplica */
+            border-radius: 10px !important;
+            border: 2px solid #f1f5f9 !important;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a8a9aa !important;
+          }
+          /* Soporte para Firefox */
+          .custom-scrollbar {
+            scrollbar-width: thin !important;
+            scrollbar-color: #d4d5d6 #f1f5f9  !important;
+          }
+        `}</style>
+
+          <div className="w-px h-6 bg-gray-100 mx-1 shrink-0" />
+
+          <div className="flex gap-2 shrink-0">
+            <Button onClick={() => setShowCreateTask(true)} className="h-8 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 font-bold px-4 text-xs border-0 transition-all">
+              <Plus size={14} className="mr-1.5" strokeWidth={3} /> Nueva Tarea
+            </Button>
+          </div>
+
         </div>
 
-        <div className="w-[160px]">
-          <Select value={filterStatus} onValueChange={(e) => setFilterStatus(e ?? "")}>
-            <SelectTrigger className={`h-9 text-xs cursor-pointer rounded-xl border-gray-200 text-gray-700`}>
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="" className="text-xs">Todos los estados</SelectItem>
-              <SelectItem value="EN_PROCESO" className="text-xs">En Proceso</SelectItem>
-              <SelectItem value="CAMBIOS_SOLICITADOS" className="text-xs">Cambios</SelectItem>
-              <SelectItem value="HECHO" className="text-xs">Listo</SelectItem>
-              <SelectItem value="APROBADO" className="text-xs">Aprobado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2 px-3 h-9 bg-gray-50/50 rounded-xl border border-gray-100 transition-all hover:bg-white hover:border-blue-100 shrink-0">
-          <input
-            id="hide-done"
-            type="checkbox"
-            checked={!showDone}
-            onChange={() => setShowDone(!showDone)}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-          />
-          <label htmlFor="hide-done" className="text-[10px] font-bold text-gray-400 uppercase cursor-pointer select-none tracking-tight whitespace-nowrap">
-            Ocultar hechos
-          </label>
-        </div>
-
-        <div className="w-px h-6 bg-gray-100 mx-1 shrink-0" />
-
-        <div className="flex gap-2 shrink-0">
-          <Button onClick={() => setShowCreateTask(true)} className="h-9 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-700 font-bold px-4 text-xs shadow-sm shadow-blue-200/50 border-0 transition-all">
-            <Plus size={14} className="mr-1.5" strokeWidth={3} /> Nueva Tarea
-          </Button>
-        </div>
       </div>
+
+      {/* Scroll Superior Espejo (Opcional, solo si hay overflow) */}
+      {viewMode === "kanban" && stages.length > 0 && (
+        <div
+          ref={scrollMirrorRef}
+          onScroll={() => syncScroll(scrollMirrorRef, scrollContainerRef)}
+          className="overflow-x-auto h-3 mb-1 custom-scrollbar shrink-0"
+        >
+          {/* Calculamos el ancho exacto: 300px columna + 16px gap */}
+          <div style={{ width: `${stages.filter(col => showDone || (!col.name.toLowerCase().includes("listo") && !col.name.toLowerCase().includes("terminado"))).length * 316}px` }}></div>
+        </div>
+      )}
 
       {stages.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-gray-400 border-2 border-dashed rounded-xl">
@@ -315,9 +365,14 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           <Droppable droppableId="all-columns" direction="horizontal" type="COLUMN">
             {(colProvided) => (
               <div
-                ref={colProvided.innerRef}
+                ref={(el) => {
+                  colProvided.innerRef(el);
+                  // Guardar ref para scroll
+                  scrollContainerRef.current = el;
+                }}
                 {...colProvided.droppableProps}
-                className="flex gap-4 overflow-x-auto pb-4 h-full"
+                onScroll={() => syncScroll(scrollContainerRef, scrollMirrorRef)}
+                className="flex gap-4 overflow-x-auto pb-4 h-full custom-scrollbar"
               >
                 {stages
                   .filter(col => showDone || (!col.name.toLowerCase().includes("listo") && !col.name.toLowerCase().includes("terminado")))

@@ -20,6 +20,7 @@ export type TaskWithRelations = {
   projectId: string
   parentId: string | null
   orderIndex: number
+  deliveryDays?: number
   assignees: TaskAssignee[]
   subTasks: { id: string; name: string; stage: string; status: TaskStatus }[]
   predecessors: { predecessor: { id: string; name: string } }[]
@@ -40,6 +41,7 @@ interface PrismaTaskWithRelations {
   parentId: string | null
   orderIndex: number
   estimatedHours: number | null
+  deliveryDays: number | null
   createdAt: Date
   updatedAt: Date
   assignees: { user: { id: string; name: string } }[]

@@ -7,7 +7,7 @@ import { TaskWithRelations } from "@/lib/actions/tasks";
 
 type GroupByMode = 'none' | 'stage' | 'status' | 'user';
 
-type Props = { 
+type Props = {
   tasks: TaskWithRelations[];
   onTaskDatesChange?: (taskId: string, start: Date, end: Date) => void;
   onTaskDoubleClick?: (task: TaskWithRelations) => void;
@@ -27,8 +27,8 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 
     let styles = undefined;
     if (t.isAssembly) {
-      styles = { 
-        progressColor: "#a855f7", 
+      styles = {
+        progressColor: "#a855f7",
         progressSelectedColor: "#9333ea",
         backgroundColor: "#f5f3ff", // Purple 50
         backgroundSelectedColor: "#ede9fe" // Purple 100
@@ -122,7 +122,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 }
 
 export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Props) {
-  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
+  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
   const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
   const ganttTasks = toGanttTasks(tasks, groupBy);

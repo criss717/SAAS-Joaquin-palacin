@@ -63,7 +63,8 @@ model Task {
   predecessors TaskDependency[] @relation("SuccessorTasks")
   successors   TaskDependency[] @relation("PredecessorTasks")
 
-  orderIndex   Int      @default(0)
+  deliveryDays   Int?     @default(0)
+  orderIndex     Int      @default(0)
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -137,7 +138,8 @@ model CatalogPart {
   quantity    Int            @default(1) 
   preferredStage String?  // Etapa inicial deseada (ej: "Pedido Externo")
   
-  operations  CatalogOperation[]
+  deliveryDays   Int?           @default(0)
+  operations     CatalogOperation[]
 }
 
 /** 

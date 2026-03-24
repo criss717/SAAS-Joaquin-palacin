@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
-import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2 } from "lucide-react";
+import { calculateEndDateAction, calculateHoursAction } from "@/lib/actions/time";
+import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
 
@@ -47,11 +48,53 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [localProgress, setLocalProgress] = useState(task?.progress ?? 0);
   const [startDate, setStartDate] = useState(() => toDateTimeLocalValue(task?.startDate ?? ""));
   const [endDate, setEndDate] = useState(() => toDateTimeLocalValue(task?.endDate ?? ""));
+  const [estimatedHours, setEstimatedHours] = useState<number>(task?.estimatedHours ?? 8);
+  const [isCalculating, setIsCalculating] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<TaskAssignee[]>(task?.assignees ?? []);
   const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors.map(p => p.predecessor.id) ?? []);
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [newSubTaskName, setNewSubTaskName] = useState("");
+  const [error, setError] = useState("");
+
+  const handleCalculateEndDate = async () => {
+    if (!startDate) {
+      setError("Debes ingresar una fecha de inicio para calcular el fin.");
+      return;
+    }
+    if (!estimatedHours || estimatedHours <= 0) {
+      setError("Debes ingresar horas estimadas mayores a 0.");
+      return;
+    }
+    setIsCalculating(true);
+    try {
+      const newEnd = await calculateEndDateAction(fromDateTimeInput(startDate), estimatedHours);
+      setEndDate(toDateTimeLocalValue(newEnd));
+      setError("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al calcular fecha final.");
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  const handleCalculateHours = async () => {
+    if (!startDate || !endDate) {
+      setError("Debes ingresar las fechas de inicio y fin para calcular las horas.");
+      return;
+    }
+    setIsCalculating(true);
+    try {
+      const hours = await calculateHoursAction(fromDateTimeInput(startDate), fromDateTimeInput(endDate));
+      setEstimatedHours(hours);
+      setError("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al calcular horas estimadas.");
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
 
   // Estados para búsqueda
   const [parentSearch, setParentSearch] = useState("");
@@ -112,12 +155,11 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         updates.push(updateTaskProgress(task.id, localProgress));
       }
 
-      // Solo actualizar fechas si son válidas (no vacías) y han cambiado
       if (startDate && endDate) {
         const origStart = toDateTimeLocalValue(task.startDate);
         const origEnd = toDateTimeLocalValue(task.endDate);
-        if (startDate !== origStart || endDate !== origEnd) {
-          updates.push(updateTaskDates(task.id, fromDateTimeInput(startDate), fromDateTimeInput(endDate)));
+        if (startDate !== origStart || endDate !== origEnd || estimatedHours !== task.estimatedHours) {
+          updates.push(updateTaskDates(task.id, fromDateTimeInput(startDate), fromDateTimeInput(endDate), estimatedHours));
         }
       }
 
@@ -145,6 +187,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         stage: selectedStage,
         status: selectedStatus,
         progress: localProgress,
+        estimatedHours: estimatedHours,
         startDate: startDate ? fromDateTimeInput(startDate) : task.startDate,
         endDate: endDate ? fromDateTimeInput(endDate) : task.endDate,
         assignees: selectedAssignees,
@@ -307,17 +350,34 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Fechas */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
-                <Input type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200" />
+            {/* Estimación y Fechas */}
+            <div className="flex gap-3">
+              <div className="space-y-1.5 w-[100px] shrink-0">
+                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                   Horas Est.
+                   <button type="button" onClick={handleCalculateHours} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
+                      {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
+                   </button>
+                </Label>
+                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => setEstimatedHours(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</Label>
-                <Input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200" />
+
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
+                <Input type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
+              </div>
+              
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
+                  <button type="button" onClick={handleCalculateEndDate} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
+                      {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
+                  </button>
+                </Label>
+                <Input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
             </div>
+            {error && <p className="text-sm text-red-500 font-bold px-1">{error}</p>}
             {/* Asignados */}
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-gray-700">Asignados</Label>

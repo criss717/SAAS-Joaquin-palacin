@@ -77,6 +77,64 @@ export class TimeEngine {
 
     return current;
   }
+  /**
+   * Calcula el número de horas laborables efectivas entre dos fechas.
+   * Útil para la estimación inversa de horas al modificar fechas maestras.
+   */
+  calculateBusinessHours(startDate: Date, endDate: Date): number {
+    if (startDate >= endDate) return 0;
+
+    const current = new Date(startDate);
+
+    let totalMs = 0;
+
+    // Iterar cronológicamente día por día hasta superar endDate
+    while (current < endDate) {
+      const schedule = this.getScheduleForDate(current);
+      if (!schedule || this.isHoliday(current) || !this.isWorkingDay(current, schedule)) {
+        // Día inactivo: saltar directo al siguiente
+        current.setDate(current.getDate() + 1);
+        current.setHours(0, 0, 0, 0);
+        continue;
+      }
+
+      const shifts = JSON.parse(schedule.shifts) as { start: string, end: string }[];
+      
+      // Analizar cada turno del día activo
+      for (const shift of shifts) {
+        const [startH, startM] = shift.start.split(':').map(Number);
+        const [endH, endM] = shift.end.split(':').map(Number);
+
+        const shiftStart = new Date(current);
+        shiftStart.setHours(startH, startM, 0, 0);
+        
+        const shiftEnd = new Date(current);
+        shiftEnd.setHours(endH, endM, 0, 0);
+
+        if (current >= shiftEnd) continue; // Si current ya rebasó este turno, ignorar
+
+        // Definir la intersección temporal [actualStart, actualEnd] real dentro de este turno
+        const actualStart = current < shiftStart ? shiftStart : current;
+        const actualEnd = endDate < shiftEnd ? endDate : shiftEnd;
+
+        // Si hay una porción de tiempo válida en este turno, sumarla
+        if (actualStart < actualEnd) {
+          totalMs += actualEnd.getTime() - actualStart.getTime();
+        }
+
+        // Si ya alcanzamos el límite superior final, devolver resultado final
+        if (endDate <= shiftEnd) {
+          return Number((totalMs / (1000 * 60 * 60)).toFixed(2)); // Retornar en formato de horas exacto
+        }
+      }
+
+      // Finalizó este día, ir al siguiente asumiendo carga a medianoche
+      current.setDate(current.getDate() + 1);
+      current.setHours(0, 0, 0, 0);
+    }
+
+    return Number((totalMs / (1000 * 60 * 60)).toFixed(2));
+  }
 
   private getScheduleForDate(date: Date): WorkSchedule | null {
     return this.schedules.find(s => date >= s.validFrom && date <= s.validUntil) || null;

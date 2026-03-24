@@ -21,6 +21,7 @@ export type TaskWithRelations = {
   parentId: string | null
   orderIndex: number
   deliveryDays?: number
+  estimatedHours?: number
   assignees: TaskAssignee[]
   subTasks: { id: string; name: string; stage: string; status: TaskStatus }[]
   predecessors: { predecessor: { id: string; name: string } }[]
@@ -186,14 +187,20 @@ export async function reorderTasks(taskId: string, newStage: string, newIndex: n
 }
 
 /**
- * Actualiza fechas de tarea. NO revalida "/" para evitar que el RSC pise el estado Kanban.
+ * Actualiza fechas de tarea y las horas estimadas (si se proveen). NO revalida "/" para evitar fallos de RSC.
  */
-export async function updateTaskDates(taskId: string, startDate: Date, endDate: Date) {
+export async function updateTaskDates(taskId: string, startDate: Date, endDate: Date, estimatedHours?: number) {
   await requireAuth()
   // Guard: rechazar fechas nulas o inválidas
   if (!startDate || !endDate) throw new Error("Fechas inválidas")
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) throw new Error("Fecha inválida (NaN)")
-  await prisma.task.update({ where: { id: taskId }, data: { startDate, endDate } })
+    
+  const dataToUpdate: Record<string, string | number | Date> = { startDate, endDate }
+  if (estimatedHours !== undefined) {
+    dataToUpdate.estimatedHours = estimatedHours
+  }
+
+  await prisma.task.update({ where: { id: taskId }, data: dataToUpdate })
   revalidatePath("/gantt")
 }
 
@@ -243,6 +250,7 @@ export async function createTask(data: {
   predecessorIds?: string[]
   startDate: Date
   endDate: Date
+  estimatedHours?: number
 }) {
   await requireAuth()
   const { assigneeIds, predecessorIds, ...rest } = data

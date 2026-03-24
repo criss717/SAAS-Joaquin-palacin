@@ -204,7 +204,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           {/* Espacio reservado para botones de acción secundarios si fuesen necesarios */}
           <div className="flex gap-2">
             {isAdmin && (
-              <Button variant="ghost" onClick={() => setShowStageManager(true)} className="h-8 rounded-lg text-gray-400 hover:text-gray-600 font-bold px-3 text-[10px] transition-all uppercase tracking-wider">
+              <Button variant="ghost" onClick={() => setShowStageManager(true)} className="h-8 rounded-lg border-t-2 border-b-0 border-l-0 border-r-0 border-blue-600 text-gray-500 hover:border-b-2 hover:border-l-2 hover:border-r-2 hover:text-gray-600 font-bold px-3 text-[10px] transition-all uppercase tracking-wider">
                 <Settings2 size={12} className="mr-1.5" /> Gestionar Etapas
               </Button>
             )}
@@ -227,7 +227,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
             <div className="w-px h-3 bg-gray-200" />
             <div className="flex items-center gap-1.5 whitespace-nowrap">
               <span className="text-gray-400">FILTRADAS:</span>
-              <span className="text-gray-600">{filteredTasks.length}</span>
+              <span className="text-gray-800">{filteredTasks.length}</span>
             </div>
           </div>
 

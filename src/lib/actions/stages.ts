@@ -67,10 +67,20 @@ export async function updateStage(stageId: string, data: { name?: string; color?
   revalidatePath("/gantt")
 }
 
-/** Elimina una etapa (solo si no tiene tareas) */
+/** Elimina una etapa (solo si no tiene tareas en este proyecto) */
 export async function deleteStage(stageId: string) {
   await requireAdmin()
-  const count = await prisma.task.count({ where: { stage: { equals: (await prisma.stage.findUnique({ where: { id: stageId } }))?.name } } })
+  const stage = await prisma.stage.findUnique({ where: { id: stageId } })
+  if (!stage) throw new Error("Etapa no encontrada")
+
+  // Solo contamos tareas que pertenezcan al mismo proyecto y tengan este nombre de etapa
+  const count = await prisma.task.count({ 
+    where: { 
+      projectId: stage.projectId,
+      stage: stage.name 
+    } 
+  })
+
   if (count > 0) throw new Error("No se puede eliminar una etapa con tareas asignadas")
   await prisma.stage.delete({ where: { id: stageId } })
   revalidatePath("/")

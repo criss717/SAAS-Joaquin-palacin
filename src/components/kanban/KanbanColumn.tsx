@@ -42,7 +42,7 @@ export const KanbanColumn = ({
         <div
           ref={colDrag.innerRef}
           {...colDrag.draggableProps}
-          className={`flex min-h-[calc(100vh-220px)] flex-col w-[300px] shrink-0 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden transition-shadow ${colSnapshot.isDragging ? "shadow-2xl rotate-1" : ""
+          className={`flex h-[calc(100vh-220px)] flex-col w-[300px] shrink-0 bg-gray-50 rounded-xl border border-gray-200 transition-shadow ${colSnapshot.isDragging ? "shadow-2xl rotate-1" : ""
             }`}
           style={{
             ...colDrag.draggableProps.style,
@@ -78,7 +78,7 @@ export const KanbanColumn = ({
               <div
                 ref={taskProvided.innerRef}
                 {...taskProvided.droppableProps}
-                className={`flex-1 px-3 py-3 flex flex-col gap-2 min-h-[200px] transition-colors ${taskSnapshot.isDraggingOver ? "bg-blue-50/60" : ""
+                className={`flex-1 overflow-y-auto kanban-scroll px-3 py-3 flex flex-col gap-2 min-h-[200px] transition-colors rounded-b-xl ${taskSnapshot.isDraggingOver ? "bg-blue-50/60" : ""
                   }`}
               >
                 {visibleTasks.map((task, idx) => (

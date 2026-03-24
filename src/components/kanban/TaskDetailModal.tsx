@@ -331,7 +331,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <GitBranch size={14} className="text-blue-500" /> Sub-tareas
+                  <GitBranch size={14} className="text-blue-500" /> Sub-Piezas/tareas
                 </Label>
                 <div className="text-[10px] font-bold text-gray-400">
                   {completedSubs}/{totalSubs} completadas

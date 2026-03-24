@@ -160,7 +160,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
   ];
 
   return (
-    <div className="w-full h-full p-4 flex flex-col bg-gray-50/30">
+    <div className="w-full h-full flex flex-col bg-gray-50/30">
       {/* Barra de Herramientas */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         {/* Agrupación */}

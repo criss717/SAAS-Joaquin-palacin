@@ -340,7 +340,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
       </div>
 
       {stages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center mt-[150px] h-64 text-gray-400 border-2 border-dashed rounded-xl">
+        <div className="flex flex-col items-center justify-center mt-[140px] h-64 text-gray-400 border-2 border-dashed rounded-xl">
           <Plus size={40} className="mb-3 opacity-30" />
           <p className="font-medium">No hay etapas configuradas</p>
           {isAdmin && (
@@ -350,7 +350,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           )}
         </div>
       ) : viewMode === "gantt" ? (
-        <div className="w-full flex-1 min-h-[500px] mt-[160px] bg-white border rounded-2xl shadow-sm overflow-hidden p-3 border-gray-100">
+        <div className="w-full flex-1 min-h-[500px] mt-[120px] bg-white border rounded-2xl shadow-sm overflow-hidden p-3 border-gray-100">
           <GanttChart
             tasks={filteredTasks}
             onTaskDatesChange={async (id, start, end) => {

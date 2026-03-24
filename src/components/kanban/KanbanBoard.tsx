@@ -176,7 +176,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
     <div className="flex flex-col h-full relative">
       {/* Cabecera Superior: Stats + Switch + Proyecto */}
       {/* Cabecera Superior: Proyecto + Switch (A la izquierda) */}
-      <div className="w-[calc(100%-48px)] max-w-full fixed top-[60px] z-20 bg-gray-50 backdrop-blur-sm pb-2 pt-2 pr-6 border-b border-gray-100">
+      <div className="w-[calc(100%-48px)] max-w-full fixed top-[60px] z-20 bg-gray-50 backdrop-blur-sm pb-2 pt-2 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100">
           <div className="flex items-center gap-4 mt-2">
             <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">

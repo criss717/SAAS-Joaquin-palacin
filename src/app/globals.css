@@ -161,3 +161,31 @@
 .kanban-scroll::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Scrollbar horizontal premium para el tablero Kanban */
+.kanban-scroll-x {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+}
+.kanban-scroll-x:hover {
+  scrollbar-color: #cbd5e1 transparent;
+}
+.kanban-scroll-x::-webkit-scrollbar {
+  height: 4px;
+}
+.kanban-scroll-x::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 99px;
+}
+.kanban-scroll-x::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 99px;
+  transition: background 0.3s ease;
+}
+.kanban-scroll-x:hover::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+.kanban-scroll-x::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

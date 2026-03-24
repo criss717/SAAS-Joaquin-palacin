@@ -33,15 +33,8 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks);
   const [stages, setStages] = useState<Stage[]>(initialStages);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-  const scrollMirrorRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Sincronización de scroll duplicado (Superior <-> Inferior)
-  const syncScroll = (from: React.RefObject<HTMLDivElement | null>, to: React.RefObject<HTMLDivElement | null>) => {
-    if (from.current && to.current) {
-      to.current.scrollLeft = from.current.scrollLeft;
-    }
-  };
   const [selectedTask, setSelectedTask] = useState<TaskWithRelations | null>(null);
   const [showStageManager, setShowStageManager] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -173,7 +166,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   });
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col h-[calc(100vh-95px)] overflow-hidden relative">
       {/* Cabecera Superior: Stats + Switch + Proyecto */}
       {/* Cabecera Superior: Proyecto + Switch (A la izquierda) */}
       <div className="w-[calc(100%-48px)] max-w-full fixed top-[60px] z-20 bg-gray-50 backdrop-blur-sm pb-2 pt-2 border-b border-gray-100">
@@ -326,17 +319,6 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
 
         </div>
 
-        {/* Scroll Superior Espejo (Opcional, solo si hay overflow) */}
-        {viewMode === "kanban" && stages.length > 0 && (
-          <div
-            ref={scrollMirrorRef}
-            onScroll={() => syncScroll(scrollMirrorRef, scrollContainerRef)}
-            className="overflow-x-auto h-3 mb-1 custom-scrollbar shrink-0"
-          >
-            {/* Calculamos el ancho exacto: 300px columna + 16px gap */}
-            <div style={{ width: `${stages.filter(col => showDone || (!col.name.toLowerCase().includes("listo") && !col.name.toLowerCase().includes("terminado"))).length * 316}px` }}></div>
-          </div>
-        )}
       </div>
 
       {stages.length === 0 ? (
@@ -368,12 +350,10 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
               <div
                 ref={(el) => {
                   colProvided.innerRef(el);
-                  // Guardar ref para scroll
                   scrollContainerRef.current = el;
                 }}
                 {...colProvided.droppableProps}
-                onScroll={() => syncScroll(scrollContainerRef, scrollMirrorRef)}
-                className="flex gap-4 overflow-x-auto pb-4 h-full custom-scrollbar pt-[150px]"
+                className="flex gap-4 overflow-x-auto kanban-scroll-x pb-4 h-full pt-[130px]"
               >
                 {stages
                   .filter(col => showDone || (!col.name.toLowerCase().includes("listo") && !col.name.toLowerCase().includes("terminado")))

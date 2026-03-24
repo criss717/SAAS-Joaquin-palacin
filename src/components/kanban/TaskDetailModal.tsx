@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
+import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
 import { calculateEndDateAction, calculateHoursAction } from "@/lib/actions/time";
 import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
+import { useCallback, useRef } from "react";
 
 type Stage = { id: string; name: string; color: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -43,6 +44,7 @@ function fromDateTimeInput(str: string): Date {
 
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
   const [isPending, startTransition] = useTransition();
+  const [localName, setLocalName] = useState(task?.name ?? "");
   const [selectedStage, setSelectedStage] = useState(task?.stage ?? "");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>(task?.status ?? "EN_PROCESO");
   const [localProgress, setLocalProgress] = useState(task?.progress ?? 0);
@@ -55,46 +57,58 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [newSubTaskName, setNewSubTaskName] = useState("");
+  const calcHoursTimer = useRef<NodeJS.Timeout | null>(null);
+  const calcEndTimer = useRef<NodeJS.Timeout | null>(null);
   const [error, setError] = useState("");
 
-  const handleCalculateEndDate = async () => {
-    if (!startDate) {
-      setError("Debes ingresar una fecha de inicio para calcular el fin.");
-      return;
-    }
-    if (!estimatedHours || estimatedHours <= 0) {
-      setError("Debes ingresar horas estimadas mayores a 0.");
-      return;
-    }
+  const handleCalculateEndDate = useCallback(async (startVal: string, hoursVal: number) => {
+    if (!startVal || !hoursVal || hoursVal <= 0) return;
     setIsCalculating(true);
     try {
-      const newEnd = await calculateEndDateAction(fromDateTimeInput(startDate), estimatedHours);
+      const newEnd = await calculateEndDateAction(fromDateTimeInput(startVal), hoursVal);
       setEndDate(toDateTimeLocalValue(newEnd));
       setError("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al calcular fecha final.");
+    } catch {
+      // Silencioso
     } finally {
       setIsCalculating(false);
     }
-  };
+  }, []);
 
-  const handleCalculateHours = async () => {
-    if (!startDate || !endDate) {
-      setError("Debes ingresar las fechas de inicio y fin para calcular las horas.");
-      return;
-    }
+  const handleCalculateHours = useCallback(async (startVal: string, endVal: string) => {
+    if (!startVal || !endVal || startVal.length < 16 || endVal.length < 16) return;
     setIsCalculating(true);
     try {
-      const hours = await calculateHoursAction(fromDateTimeInput(startDate), fromDateTimeInput(endDate));
+      const start = fromDateTimeInput(startVal);
+      const end = fromDateTimeInput(endVal);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+      const hours = await calculateHoursAction(start, end);
       setEstimatedHours(hours);
       setError("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al calcular horas estimadas.");
+    } catch {
+      // Silencioso
     } finally {
       setIsCalculating(false);
     }
+  }, []);
+
+  const onStartDateChange = (val: string) => {
+    setStartDate(val);
+    if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
+    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 500);
   };
 
+  const onEndDateChange = (val: string) => {
+    setEndDate(val);
+    if (calcHoursTimer.current) clearTimeout(calcHoursTimer.current);
+    calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 500);
+  };
+
+  const onHoursChange = (val: number) => {
+    setEstimatedHours(val);
+    if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
+    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(startDate, val), 500);
+  };
 
   // Estados para búsqueda
   const [parentSearch, setParentSearch] = useState("");
@@ -143,6 +157,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     startTransition(async () => {
       const updates: Promise<unknown>[] = [];
 
+      if (localName !== task.name) {
+        updates.push(updateTaskName(task.id, localName));
+      }
+
       if (selectedStage !== task.stage) {
         updates.push(updateTaskStage(task.id, selectedStage));
       }
@@ -169,7 +187,6 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         updates.push(updateTaskAssignees(task.id, selectedAssignees.map(a => a.id)));
       }
 
-      // Nuevas actualizaciones: Dependencias y Padre
       const origPredIds = task.predecessors.map(p => p.predecessor.id).sort().join(",");
       const newPredIds = [...predecessorIds].sort().join(",");
       if (origPredIds !== newPredIds) {
@@ -184,6 +201,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
       onTaskUpdated({
         ...task,
+        name: localName,
         stage: selectedStage,
         status: selectedStatus,
         progress: localProgress,
@@ -265,8 +283,13 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               {selectedStatus.replace('_', ' ')}
             </span>
           </div>
-          <DialogTitle className="text-lg font-bold text-gray-900">
-            {task.name}
+          <DialogTitle className="text-lg font-bold text-gray-900 pr-8">
+            <Input
+              value={localName}
+              onChange={e => setLocalName(e.target.value)}
+              className="font-bold ml-1 text-lg border-none shadow-none focus-visible:ring-1 focus-visible:ring-blue-400 px-3 h-9 bg-transparent hover:bg-gray-100 transition-colors"
+              placeholder="Nombre de la tarea..."
+            />
           </DialogTitle>
           <DialogDescription className="sr-only">Detalles de la tarea {task.name}</DialogDescription>
         </DialogHeader>
@@ -354,27 +377,27 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
             <div className="flex gap-3">
               <div className="space-y-1.5 w-[100px] shrink-0">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                   Horas Est.
-                   <button type="button" onClick={handleCalculateHours} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
-                      {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
-                   </button>
+                  Horas Est.
+                  <button type="button" onClick={() => handleCalculateHours(startDate, endDate)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
+                    {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
+                  </button>
                 </Label>
-                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => setEstimatedHours(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
+                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
 
               <div className="space-y-1.5 flex-1">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
-                <Input type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
+                <Input type="datetime-local" value={startDate} onChange={e => onStartDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
-              
+
               <div className="space-y-1.5 flex-1">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
                   <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
-                  <button type="button" onClick={handleCalculateEndDate} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
-                      {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
+                  <button type="button" onClick={() => handleCalculateEndDate(startDate, estimatedHours)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
+                    {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
                   </button>
                 </Label>
-                <Input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
+                <Input type="datetime-local" value={endDate} onChange={e => onEndDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
             </div>
             {error && <p className="text-sm text-red-500 font-bold px-1">{error}</p>}

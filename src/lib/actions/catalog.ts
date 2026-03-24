@@ -152,12 +152,24 @@ export async function launchMachineToProject(machineId: string, projectName: str
     const partIdToTaskId = new Map<string, string>();
     const projectStartDate = new Date(startAt);
 
+    // Helper para obtener horas totales recursivas de una pieza (operaciones propias + hijas)
+    function getRecursiveHours(pId: string): number {
+      const part = machine!.parts.find(p => p.id === pId);
+      if (!part) return 0;
+      
+      const directOpsHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+      const childrenParts = machine!.parts.filter(p => p.parentId === pId);
+      const childrenHours = childrenParts.reduce((acc, child) => acc + getRecursiveHours(child.id), 0);
+      
+      return directOpsHours + childrenHours;
+    }
+
     // Identificar qué piezas son "Ensambles Reales" (tienen sub-piezas)
     const parentPartIds = new Set(machine.parts.map(p => p.parentId).filter(Boolean));
 
     // Clonación Recursiva Helper
     async function clonePart(partId: string, parentTaskId?: string) {
-      // Definir interfaces locales para Tipado Estricto de los resultados de Prisma
+      // Definir interfaces locales para Tipado Estricto
       interface CatalogOp { 
         name: string; 
         estimatedHours: number; 
@@ -176,23 +188,37 @@ export async function launchMachineToProject(machineId: string, projectName: str
       const part = machine!.parts.find(p => p.id === partId) as CatalogPartWithOps | undefined;
       if (!part) return;
 
-      const totalOpHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
-      const endDate = engine.addBusinessHours(projectStartDate, Math.max(8, totalOpHours)); 
+      // Cálculo de horas para este nodo (Ensambles suman recursivamente, piezas simples usan sus operaciones)
+      const isAssembly = parentPartIds.has(part.id);
+      const totalHoursForThisPart = isAssembly ? getRecursiveHours(part.id) : part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+      
+      // Cálculo de Fechas
+      const isExternal = part.preferredStage === "Pedido Externo";
+      let taskEndDate: Date;
+      let finalEstimatedHours = totalHoursForThisPart || 8;
 
-      // Crear la Tarea/Ensamble (isAssembly dinámico basado en si es padre)
+      if (isExternal && (part.deliveryDays || 0) > 0) {
+        // Para pedido externo: fecha fin por calendario natural
+        taskEndDate = new Date(new Date(projectStartDate).setDate(new Date(projectStartDate).getDate() + (part.deliveryDays || 0)));
+        // Pero las horas estimadas deben ser las laborables en ese periodo
+        finalEstimatedHours = engine.calculateBusinessHours(projectStartDate, taskEndDate);
+      } else {
+        // Para fabricación: fecha fin por motor de tiempo (horas laborables)
+        taskEndDate = engine.addBusinessHours(projectStartDate, Math.max(1, finalEstimatedHours));
+      }
+
+      // Crear la Tarea/Ensamble
       const newTaskPart = await prisma.task.create({
         data: {
           name: part.name + (part.quantity > 1 ? ` (x${part.quantity})` : ""),
           projectId: project.id,
           parentId: parentTaskId,
-          isAssembly: parentPartIds.has(part.id), // DINÁMICO
+          isAssembly: isAssembly,
           stage: part.preferredStage || "Pendiente",
           status: "EN_PROCESO", 
           startDate: projectStartDate,
-          endDate: (part.preferredStage === "Pedido Externo" && (part.deliveryDays || 0) > 0)
-            ? new Date(new Date(projectStartDate).setDate(new Date(projectStartDate).getDate() + (part.deliveryDays || 0)))
-            : endDate,
-          estimatedHours: totalOpHours || 8,
+          endDate: taskEndDate,
+          estimatedHours: finalEstimatedHours,
           deliveryDays: part.deliveryDays || 0,
         }
       });
@@ -202,9 +228,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
       // Clonar operaciones de esta pieza en cascada
       let opsStartDate = new Date(projectStartDate);
       for (const op of part.operations) {
-        // Cálculo preciso mediante el motor
         const opsEndDate = engine.addBusinessHours(opsStartDate, op.estimatedHours || 8);
-
         await prisma.task.create({
           data: {
             name: op.name,
@@ -216,11 +240,9 @@ export async function launchMachineToProject(machineId: string, projectName: str
             progress: 0,
             startDate: opsStartDate,
             endDate: opsEndDate,
-            estimatedHours: op.estimatedHours,
+            estimatedHours: op.estimatedHours || 8,
           }
         });
-        
-        // La siguiente operación empieza cuando termina esta (cascada simple)
         opsStartDate = opsEndDate;
       }
 

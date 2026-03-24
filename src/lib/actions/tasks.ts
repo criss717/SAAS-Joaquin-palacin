@@ -106,6 +106,14 @@ export async function getTasksByProject(projectId: string): Promise<TaskWithRela
   }) as unknown as TaskWithRelations[]
 }
 
+/** Actualiza el nombre de una tarea */
+export async function updateTaskName(taskId: string, name: string) {
+  await requireAuth()
+  await prisma.task.update({ where: { id: taskId }, data: { name } })
+  revalidatePath("/")
+  revalidatePath("/gantt")
+}
+
 /** Actualiza el estado manual de una tarea */
 export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   await requireAuth()

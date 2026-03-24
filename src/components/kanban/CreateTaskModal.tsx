@@ -13,6 +13,7 @@ import { calculateEndDateAction, calculateHoursAction } from "@/lib/actions/time
 import { cn } from "@/lib/utils";
 import { Clock, Package, Plus, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2 } from "lucide-react";
 import { TaskStatus } from "@prisma/client";
+import { useCallback, useRef } from "react";
 
 type Stage = { id: string; name: string; color: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -59,42 +60,58 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [parentId, setParentId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const handleCalculateEndDate = async () => {
-    if (!startDate) {
-      setError("Debes ingresar una fecha de inicio para calcular el fin.");
-      return;
-    }
-    if (!estimatedHours || estimatedHours <= 0) {
-      setError("Debes ingresar horas estimadas mayores a 0.");
-      return;
-    }
+  const [parentSearch, setParentSearch] = useState("");
+  const [depSearch, setDepSearch] = useState("");
+  const calcHoursTimer = useRef<NodeJS.Timeout | null>(null);
+  const calcEndTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleCalculateEndDate = useCallback(async (startVal: string, hoursVal: number) => {
+    if (!startVal || !hoursVal || hoursVal <= 0) return;
     setIsCalculating(true);
     try {
-      const newEnd = await calculateEndDateAction(fromDateTimeInput(startDate), estimatedHours);
+      const newEnd = await calculateEndDateAction(fromDateTimeInput(startVal), hoursVal);
       setEndDate(toDateTimeLocalValue(newEnd));
       setError("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al calcular fecha final.");
+    } catch {
+      // Silencioso
     } finally {
       setIsCalculating(false);
     }
-  };
+  }, []);
 
-  const handleCalculateHours = async () => {
-    if (!startDate || !endDate) {
-      setError("Debes ingresar las fechas de inicio y fin para calcular las horas.");
-      return;
-    }
+  const handleCalculateHours = useCallback(async (startVal: string, endVal: string) => {
+    if (!startVal || !endVal || startVal.length < 16 || endVal.length < 16) return;
     setIsCalculating(true);
     try {
-      const hours = await calculateHoursAction(fromDateTimeInput(startDate), fromDateTimeInput(endDate));
+      const start = fromDateTimeInput(startVal);
+      const end = fromDateTimeInput(endVal);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+      const hours = await calculateHoursAction(start, end);
       setEstimatedHours(hours);
       setError("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error al calcular horas estimadas.");
+    } catch {
+      // Silencioso
     } finally {
       setIsCalculating(false);
     }
+  }, []);
+
+  const onStartDateChange = (val: string) => {
+    setStartDate(val);
+    if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
+    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 500);
+  };
+
+  const onEndDateChange = (val: string) => {
+    setEndDate(val);
+    if (calcHoursTimer.current) clearTimeout(calcHoursTimer.current);
+    calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 500);
+  };
+
+  const onHoursChange = (val: number) => {
+    setEstimatedHours(val);
+    if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
+    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(startDate, val), 500);
   };
 
   const toggleAssignee = (id: string) => {
@@ -212,31 +229,29 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
               </div>
             </div>
 
-            {/* Estimación y Fechas */}
+            {/* Estimación y Fecha */}
             <div className="flex gap-3 px-1">
               <div className="space-y-1.5 w-[100px] shrink-0">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
                   Horas Est.
-                  <button type="button" onClick={handleCalculateHours} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
+                  <button type="button" onClick={() => handleCalculateHours(startDate, endDate)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
                     {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
                   </button>
                 </Label>
-                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => setEstimatedHours(Number(e.target.value))} className="text-sm h-11 rounded-xl border-gray-200" />
+                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
-
               <div className="space-y-1.5 flex-1">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
-                <Input type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm h-11 rounded-xl border-gray-200 px-2 w-full" />
+                <Input type="datetime-local" value={startDate} onChange={e => onStartDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
-
               <div className="space-y-1.5 flex-1">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
                   <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
-                  <button type="button" onClick={handleCalculateEndDate} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
+                  <button type="button" onClick={() => handleCalculateEndDate(startDate, estimatedHours)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
                     {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
                   </button>
                 </Label>
-                <Input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm h-11 rounded-xl border-gray-200 px-2 w-full" />
+                <Input type="datetime-local" value={endDate} onChange={e => onEndDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
             </div>
 
@@ -298,6 +313,12 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                 <Package size={14} className="text-purple-500" /> Tarea Padre / Ensamble (opcional)
               </Label>
+              <Input
+                placeholder="Buscar ensamble padre..."
+                value={parentSearch}
+                onChange={e => setParentSearch(e.target.value)}
+                className="h-8 text-[11px] rounded-lg border-gray-100 mb-1"
+              />
               <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-2xl border border-gray-100 space-y-1">
                 {allTasks.length === 0 ? (
                   <p className="text-[10px] text-gray-400 italic p-2">No hay tareas disponibles</p>
@@ -313,22 +334,29 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                       <span>(Ninguno - Nivel Raíz)</span>
                       {parentId === null && <CheckCircle2 size={12} />}
                     </button>
-                    {allTasks.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => setParentId(t.id)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${parentId === t.id
-                          ? "bg-purple-50 border-purple-300 text-purple-700 shadow-sm"
-                          : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
-                          }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {t.isAssembly && <Package size={12} className="text-purple-400 shrink-0" />}
-                          <span className="truncate">{t.name}</span>
-                        </div>
-                        {parentId === t.id && <CheckCircle2 size={12} className="shrink-0" />}
-                      </button>
-                    ))}
+                    {allTasks
+                      .filter(t => t.name.toLowerCase().includes(parentSearch.toLowerCase()))
+                      .sort((a, b) => {
+                         if (a.id === parentId) return -1;
+                         if (b.id === parentId) return 1;
+                         return a.name.localeCompare(b.name);
+                      })
+                      .map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setParentId(t.id)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${parentId === t.id
+                            ? "bg-purple-50 border-purple-300 text-purple-700 shadow-sm"
+                            : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            {t.isAssembly && <Package size={12} className="text-purple-400 shrink-0" />}
+                            <span className="truncate">{t.name}</span>
+                          </div>
+                          {parentId === t.id && <CheckCircle2 size={12} className="shrink-0" />}
+                        </button>
+                      ))}
                   </>
                 )}
               </div>
@@ -339,26 +367,41 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
               <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                 <GitBranch size={14} className="text-blue-500" /> Depende de... (opcional)
               </Label>
+              <Input
+                placeholder="Buscar dependencia..."
+                value={depSearch}
+                onChange={e => setDepSearch(e.target.value)}
+                className="h-8 text-[11px] rounded-lg border-gray-100 mb-1"
+              />
               <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-2xl border border-gray-100">
                 {allTasks.length === 0 ? (
                   <p className="text-[10px] text-gray-400 italic p-2">No hay tareas disponibles</p>
                 ) : (
-                  allTasks.map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => setPredecessorIds(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
-                      className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${predecessorIds.includes(t.id)
-                        ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
-                        : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"
-                        }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        {t.isAssembly && <Package size={12} className="text-purple-400 shrink-0" />}
-                        <span className="truncate">{t.name}</span>
-                      </div>
-                      {predecessorIds.includes(t.id) && <CheckCircle2 size={12} className="shrink-0" />}
-                    </button>
-                  ))
+                  allTasks
+                    .filter(t => t.name.toLowerCase().includes(depSearch.toLowerCase()))
+                    .sort((a, b) => {
+                       const aSel = predecessorIds.includes(a.id);
+                       const bSel = predecessorIds.includes(b.id);
+                       if (aSel && !bSel) return -1;
+                       if (!aSel && bSel) return 1;
+                       return a.name.localeCompare(b.name);
+                    })
+                    .map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setPredecessorIds(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                        className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${predecessorIds.includes(t.id)
+                          ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
+                          : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"
+                          }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {t.isAssembly && <Package size={12} className="text-purple-400 shrink-0" />}
+                          <span className="truncate">{t.name}</span>
+                        </div>
+                        {predecessorIds.includes(t.id) && <CheckCircle2 size={12} className="shrink-0" />}
+                      </button>
+                    ))
                 )}
               </div>
             </div>

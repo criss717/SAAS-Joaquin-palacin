@@ -213,8 +213,8 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
         ))}
       </div>
 
-      {/* Gantt Container */}
-      <div className="flex-1 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+      {/* Gantt Container — la librería gestiona su propio scroll interno */}
+      <div className="flex-1 min-h-0 border border-gray-200 bg-white shadow-xl">
         {ganttTasks.length > 0 ? (
           <Gantt
             tasks={ganttTasks}
@@ -223,10 +223,11 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             onDoubleClick={handleDblClick}
             locale="es"
             fontFamily="var(--font-outfit), Inter, sans-serif"
-            listCellWidth="200px"
+            listCellWidth="260px"
             columnWidth={viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : viewMode === ViewMode.Day ? 70 : 60}
             headerHeight={50}
             rowHeight={45}
+            ganttHeight={typeof window !== "undefined" ? Math.max(300, window.innerHeight - 400) : 560}
             barCornerRadius={6}
             handleWidth={8}
           />
@@ -245,6 +246,11 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
         ._WuQ0f, ._3lLk3 {
           text-align: center !important;
           vertical-align: middle !important;
+        }
+
+        /* Centrado vertical de textos de meses y años en el header SVG */
+        ._9w8d5, ._2q1Kt {
+          dominant-baseline: central !important;
         }
 
         /* Ocultar todo lo que está después del nombre de la tarea (separadores, Inicio, Fin) */
@@ -275,11 +281,52 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
           fill: #4b5563 !important;
         }
 
+        /* FIX SCROLL HORIZONTAL: el SVG interno (width=svgWidth) expande _CZjuD
+           haciéndolo tan ancho como todo el timeline, lo que hace que el padre
+           del div#._2k9Ys también sea svgWidth→ sin overflow → sin scrollbar.
+           Con flex:1 y min-width:0, _CZjuD respeta el ancho del viewport. */
+        ._CZjuD {
+          flex: 1 !important;
+          min-width: 0 !important;
+        }
+        ._3eULf {
+          max-width: 100% !important;
+          min-width: 0 !important;
+        }
+
         /* Estilo para las filas de grupo (proyectos virtuales) */
         ._34SS0[style*="font-weight: bold"],
         .taskListTable > div > div[style*="font-weight: bold"] {
           background-color: #f1f5f9 !important;
           border-left: 4px solid #64748b !important;
+        }
+
+        /* Scroll vertical premium (clase interna ._1eT-t) */
+        ._1eT-t {
+          scrollbar-width: thin;
+          scrollbar-color: transparent transparent;
+          transition: scrollbar-color 0.3s ease;
+        }
+        ._1eT-t:hover {
+          scrollbar-color: #cbd5e1 transparent;
+        }
+        ._1eT-t::-webkit-scrollbar {
+          width: 4px !important;
+        }
+        ._1eT-t::-webkit-scrollbar-track {
+          background: transparent;
+          border-radius: 99px;
+        }
+        ._1eT-t::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 99px;
+          transition: background 0.3s ease;
+        }
+        ._1eT-t:hover::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+        }
+        ._1eT-t::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
     </div>

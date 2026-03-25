@@ -332,7 +332,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
           )}
         </div>
       ) : viewMode === "gantt" ? (
-        <div className="w-full flex-1 min-h-[500px] mt-[120px] bg-white border rounded-2xl shadow-sm overflow-hidden p-3 border-gray-100">
+        <div className="flex flex-col flex-1 min-h-0 mt-[130px]">
           <GanttChart
             tasks={filteredTasks}
             onTaskDatesChange={async (id, start, end) => {

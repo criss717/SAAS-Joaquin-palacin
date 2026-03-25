@@ -32,7 +32,6 @@ export const KanbanColumn = ({
 }: KanbanColumnProps) => {
   // Estado local para carga perezosa (Lazy Rendering)
   const [visibleCount, setVisibleCount] = useState(50);
-
   const visibleTasks = tasks.slice(0, visibleCount);
   const remainingCount = tasks.length - visibleCount;
 
@@ -42,13 +41,9 @@ export const KanbanColumn = ({
         <div
           ref={colDrag.innerRef}
           {...colDrag.draggableProps}
-          className={`flex h-[calc(100vh-250px)] flex-col w-[300px] shrink-0 bg-gray-50 rounded-xl border border-gray-200 transition-shadow ${colSnapshot.isDragging ? "shadow-2xl rotate-1" : ""
+          className={`flex h-[calc(100vh-250px)] flex-col w-[300px] shrink-0 bg-gray-50 rounded-xl border-l border-r border-b border-t-3 border-l-gray-200 border-b-gray-200 border-r-gray-200 overflow-hidden transition-shadow ${colSnapshot.isDragging ? "shadow-2xl rotate-1" : ""
             }`}
-          style={{
-            ...colDrag.draggableProps.style,
-            borderTopColor: column.color,
-            borderTopWidth: 3,
-          }}
+          style={{ ...colDrag.draggableProps.style, borderTopColor: column.color }}
         >
           {/* Header de Columna */}
           <div

@@ -294,6 +294,18 @@ export async function importMachineFromExcel(formData: FormData) {
       headers[colNumber] = cell.value?.toString().toLowerCase().trim() || "";
     });
 
+    // Validar cabeceras mínimas obligatorias
+    const required = ["nombre", "cantidad", "etapa inicial"];
+    const missing = required.filter(h => !headers.includes(h));
+    
+    if (missing.length > 0) {
+      return { 
+        success: false, 
+        error: "INVALID_FORMAT",
+        details: `Faltan las columnas obligatorias: ${missing.join(", ")}`
+      };
+    }
+
     // 2. Crear la Máquina Plantilla
     const machine = await prisma.machineCatalog.create({
       data: { 

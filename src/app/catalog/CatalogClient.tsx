@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createMachine, deleteMachine, launchMachineToProject, importMachineFromExcel, updateMachine, cloneMachine } from "@/lib/actions/catalog";
-import { Plus, Trash2, Settings, ChevronRight, Play, Copy, ChevronLeft, Search, XCircle } from "lucide-react";
+import { Plus, Trash2, Settings, ChevronRight, Play, Copy, ChevronLeft, Search, XCircle, Download } from "lucide-react";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
@@ -57,21 +57,60 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     }
   };
 
+  const handleExcelFormat = () => {
+    const link = document.createElement("a");
+    link.href = "/formatos_plantillas/formato_catalogo_maquina.xlsx";
+    link.download = "Formato_Catalogo_Maquina.xlsx";
+    link.click();
+  }
+
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 1. Validar extensión en el cliente
+    if (!file.name.endsWith(".xlsx")) {
+      Swal.fire({
+        title: "Archivo no válido",
+        text: "Por favor, selecciona un archivo Excel (.xlsx)",
+        icon: "warning",
+        confirmButtonColor: "#3b82f6",
+      });
+      e.target.value = "";
+      return;
+    }
 
     setLoading(true);
     const formData = new FormData();
     formData.append("file", file);
 
     const res = await importMachineFromExcel(formData);
+    
     if (res.success && res.machine) {
       setMachines([{ ...res.machine, parts: [], _count: { parts: 0 } }, ...machines]);
       toast.success(`Catálogo "${res.machine.name}" importado correctamente.`);
     } else {
-      toast.error(res.error || "Error al importar Excel");
+      // 2. Manejo de errores específicos con SweetAlert2
+      if (res.error === "INVALID_FORMAT") {
+        const details = "details" in res ? (res.details as string) : "";
+        Swal.fire({
+          title: "Formato no válido",
+          html: `El archivo no cumple con la estructura esperada.<br/><small class="text-gray-500">${details}</small>`,
+          icon: "error",
+          showCancelButton: true,
+          confirmButtonText: "Descargar Formato",
+          cancelButtonText: "Cerrar",
+          confirmButtonColor: "#10b981", // emerald-500
+        }).then((result) => {
+          if (result.isConfirmed) {
+            handleExcelFormat(); // Disparar descarga del formato
+          }
+        });
+      } else {
+        toast.error(res.error || "Error al importar Excel");
+      }
     }
+    
     setLoading(false);
     e.target.value = ""; // Reset input
   };
@@ -138,10 +177,10 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
     const res = await cloneMachine(id);
     if (res.success && res.machine) {
       const originalMachine = machines.find(m => m.id === id);
-      setMachines([{ 
-        ...res.machine, 
-        parts: originalMachine?.parts || [], 
-        _count: { parts: originalMachine?._count.parts || 0 } 
+      setMachines([{
+        ...res.machine,
+        parts: originalMachine?.parts || [],
+        _count: { parts: originalMachine?._count.parts || 0 }
       }, ...machines]);
       toast.success("Máquina clonada correctamente.");
     } else {
@@ -195,8 +234,8 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   };
 
   // Lógica de filtrado y paginación
-  const filteredMachines = machines.filter(m => 
-    m.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredMachines = machines.filter(m =>
+    m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     m.parts.some(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -213,10 +252,10 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
           <div className="text-sm text-gray-500 whitespace-nowrap">
             Resultado: <strong>{filteredMachines.length}</strong> de {machines.length}
           </div>
-          
+
           <div className="flex-1 max-w-md relative">
-            <Input 
-              placeholder="Buscar por máquina o pieza..." 
+            <Input
+              placeholder="Buscar por máquina o pieza..."
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               className={`h-10 pl-10 border-gray-200 rounded-xl transition-all ${searchTerm ? 'border-blue-500 ring-1 ring-blue-500' : ''}`}
@@ -230,12 +269,24 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <input type="file" id="excel-import" className="hidden" accept=".xlsx" onChange={handleExcelImport} />
-          <Button variant="outline" onClick={() => document.getElementById('excel-import')?.click()} disabled={loading} className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 rounded-xl font-bold">
-            Importar Excel
-          </Button>
-          <Button onClick={() => setIsModalOpen(true)} className="bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-xl font-bold">
+        <div className="flex gap-2 justify-end items-center">
+          <div className="flex gap-2 border border-gray-200 rounded-xl p-1">
+            <Button
+              title="Descargar formato de Excel para importar máquinas"
+              variant="outline"
+              onClick={handleExcelFormat}
+              disabled={loading}
+              className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 rounded-xl font-bold"
+            >
+              <Download size={16} className="mr-2" />
+              Formato
+            </Button>
+            <input type="file" id="excel-import" className="hidden" accept=".xlsx" onChange={handleExcelImport} />
+            <Button title="Importar máquinas desde Excel" variant="outline" onClick={() => document.getElementById('excel-import')?.click()} disabled={loading} className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 rounded-xl font-bold">
+              Importar Excel
+            </Button>
+          </div>
+          <Button title="Crear nueva máquina" onClick={() => setIsModalOpen(true)} className="bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-xl font-bold">
             <Plus size={16} className="mr-2" /> Nueva Máquina
           </Button>
         </div>

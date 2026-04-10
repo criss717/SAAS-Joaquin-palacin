@@ -124,7 +124,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 
 export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
-  const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [zoomLevel, setZoomLevel] = useState(0.5);
   const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
   const ganttTasks = toGanttTasks(tasks, groupBy);
@@ -187,7 +187,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
           {viewButtons.map(({ label, mode }) => (
             <button
               key={mode}
-              onClick={() => { setViewMode(mode); setZoomLevel(1.0); }}
+              onClick={() => setViewMode(mode)}
               className={`px-4 py-1.5 cursor-pointer rounded-lg text-xs font-medium transition-all ${viewMode === mode
                 ? "bg-gray-900 text-white shadow-md"
                 : "text-gray-500 hover:bg-gray-50"
@@ -216,7 +216,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             {Math.round(zoomLevel * 100)}%
           </div>
           <button
-            onClick={() => setZoomLevel(prev => Math.min(3.0, prev + 0.2))}
+            onClick={() => setZoomLevel(prev => Math.min(3.0, prev + 0.1))}
             disabled={zoomLevel >= 3.0}
             className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-all"
             title="Acercar"
@@ -224,7 +224,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             <ZoomIn size={16} />
           </button>
           <button
-            onClick={() => setZoomLevel(1.0)}
+            onClick={() => setZoomLevel(0.5)}
             className="ml-1 px-2 py-1 text-[9px] font-bold text-blue-600 hover:bg-blue-50 rounded-md cursor-pointer transition-all"
           >
             RESET
@@ -265,7 +265,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             ganttHeight={typeof window !== "undefined" ? Math.max(300, window.innerHeight - 400) : 560}
             barCornerRadius={6}
             handleWidth={8}
-            preStepsCount={0}
+            preStepsCount={viewMode === ViewMode.Hour || viewMode === ViewMode.Day ? 2 : 0}
           />
         ) : (
           <div className="flex items-center justify-center h-64 text-gray-400 text-sm italic">

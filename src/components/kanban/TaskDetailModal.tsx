@@ -382,10 +382,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
 
               <div className="bg-gray-50 rounded-xl p-2 border border-gray-100 max-h-48 overflow-y-auto space-y-1">
-                {task.subTasks.length === 0 ? (
+                {allTasks.filter(t => t.parentId === task.id).length === 0 ? (
                   <p className="text-[10px] text-gray-400 italic text-center py-2">No hay sub-tareas</p>
                 ) : (
-                  task.subTasks.map(sub => (
+                  allTasks.filter(t => t.parentId === task.id).map(sub => (
                     <div key={sub.id} className="flex items-center justify-between bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
                       <div className="flex items-center gap-2 truncate">
                         <div className={`w-2 h-2 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-blue-400"}`} />

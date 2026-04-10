@@ -266,7 +266,6 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             barCornerRadius={6}
             handleWidth={8}
             preStepsCount={0}
-            viewDate={ganttTasks.length > 0 ? ganttTasks[0].start : undefined}
           />
         ) : (
           <div className="flex items-center justify-center h-64 text-gray-400 text-sm italic">

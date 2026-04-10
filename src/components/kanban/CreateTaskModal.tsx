@@ -44,8 +44,15 @@ function toDateTimeLocalValue(d: Date | string): string {
   }
 }
 
-const normalize = (s: string) => 
+const normalize = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+/** Returns today's date at 08:00 AM as a datetime-local string (YYYY-MM-DDTHH:MM) */
+function getDefaultStartDate(): string {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T08:00`;
+}
 
 export function CreateTaskModal({ open, projectId, stages, users, allTasks, initialStage, onClose, onTaskCreated }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -54,7 +61,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [selectedStage, setSelectedStage] = useState(initialStage ?? stages[0]?.name ?? "Pendiente");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>("EN_PROCESO");
   const [progress, setProgress] = useState(0);
-  const [startDate, setStartDate] = useState("");
+  const [startDate, setStartDate] = useState(getDefaultStartDate);
   const [endDate, setEndDate] = useState("");
   const [estimatedHours, setEstimatedHours] = useState<number>(8);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -71,7 +78,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
     if (selectedDeps.length === 0) return;
 
     const maxEnd = new Date(Math.max(...selectedDeps.map(d => new Date(d.endDate).getTime())));
-    
+
     setIsCalculating(true);
     try {
       const nextStart = await getNextWorkingDayAction(maxEnd);
@@ -193,7 +200,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
 
       onTaskCreated(newTask);
       // Reset
-      setName(""); setIsAssembly(false); setStartDate(""); setEndDate(""); setEstimatedHours(8); setAssigneeIds([]);
+      setName(""); setIsAssembly(false); setStartDate(getDefaultStartDate()); setEndDate(""); setEstimatedHours(8); setAssigneeIds([]);
       setPredecessorIds([]); setParentId(null); setSelectedStatus("EN_PROCESO"); setProgress(0);
       onClose();
     });
@@ -362,9 +369,9 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     {allTasks
                       .filter(t => normalize(t.name).includes(normalize(parentSearch)))
                       .sort((a, b) => {
-                         if (a.id === parentId) return -1;
-                         if (b.id === parentId) return 1;
-                         return a.name.localeCompare(b.name);
+                        if (a.id === parentId) return -1;
+                        if (b.id === parentId) return 1;
+                        return a.name.localeCompare(b.name);
                       })
                       .map(t => (
                         <button
@@ -405,11 +412,11 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                   allTasks
                     .filter(t => normalize(t.name).includes(normalize(depSearch)))
                     .sort((a, b) => {
-                       const aSel = predecessorIds.includes(a.id);
-                       const bSel = predecessorIds.includes(b.id);
-                       if (aSel && !bSel) return -1;
-                       if (!aSel && bSel) return 1;
-                       return a.name.localeCompare(b.name);
+                      const aSel = predecessorIds.includes(a.id);
+                      const bSel = predecessorIds.includes(b.id);
+                      if (aSel && !bSel) return -1;
+                      if (!aSel && bSel) return 1;
+                      return a.name.localeCompare(b.name);
                     })
                     .map(t => (
                       <button

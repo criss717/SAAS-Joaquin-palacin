@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Gantt, Task, ViewMode } from "@rsagiev/gantt-task-react-19";
 import "@rsagiev/gantt-task-react-19/dist/index.css";
 import { TaskWithRelations } from "@/lib/actions/tasks";
+import { ZoomIn, ZoomOut, Search } from "lucide-react";
 
 type GroupByMode = 'none' | 'stage' | 'status' | 'user';
 
@@ -123,6 +124,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 
 export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
+  const [zoomLevel, setZoomLevel] = useState(1.0);
   const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
   const ganttTasks = toGanttTasks(tasks, groupBy);
@@ -185,7 +187,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
           {viewButtons.map(({ label, mode }) => (
             <button
               key={mode}
-              onClick={() => setViewMode(mode)}
+              onClick={() => { setViewMode(mode); setZoomLevel(1.0); }}
               className={`px-4 py-1.5 cursor-pointer rounded-lg text-xs font-medium transition-all ${viewMode === mode
                 ? "bg-gray-900 text-white shadow-md"
                 : "text-gray-500 hover:bg-gray-50"
@@ -194,6 +196,39 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
               {label}
             </button>
           ))}
+        </div>
+
+        {/* Zoom Controls */}
+        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm items-center gap-1">
+          <div className="px-2 flex items-center gap-1.5 text-gray-400">
+            <Search size={14} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Zoom</span>
+          </div>
+          <button
+            onClick={() => setZoomLevel(prev => Math.max(0.3, prev - 0.1))}
+            disabled={zoomLevel <= 0.3}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-all"
+            title="Alejar"
+          >
+            <ZoomOut size={16} />
+          </button>
+          <div className="w-10 text-center text-[10px] font-bold text-gray-600">
+            {Math.round(zoomLevel * 100)}%
+          </div>
+          <button
+            onClick={() => setZoomLevel(prev => Math.min(3.0, prev + 0.2))}
+            disabled={zoomLevel >= 3.0}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-all"
+            title="Acercar"
+          >
+            <ZoomIn size={16} />
+          </button>
+          <button
+            onClick={() => setZoomLevel(1.0)}
+            className="ml-1 px-2 py-1 text-[9px] font-bold text-blue-600 hover:bg-blue-50 rounded-md cursor-pointer transition-all"
+          >
+            RESET
+          </button>
         </div>
       </div>
 
@@ -224,12 +259,14 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             locale="es"
             fontFamily="var(--font-outfit), Inter, sans-serif"
             listCellWidth="260px"
-            columnWidth={viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : viewMode === ViewMode.Day ? 70 : 60}
+            columnWidth={(viewMode === ViewMode.Month ? 300 : viewMode === ViewMode.Week ? 200 : viewMode === ViewMode.Day ? 70 : 60) * zoomLevel}
             headerHeight={50}
             rowHeight={45}
             ganttHeight={typeof window !== "undefined" ? Math.max(300, window.innerHeight - 400) : 560}
             barCornerRadius={6}
             handleWidth={8}
+            preStepsCount={0}
+            viewDate={ganttTasks.length > 0 ? ganttTasks[0].start : undefined}
           />
         ) : (
           <div className="flex items-center justify-center h-64 text-gray-400 text-sm italic">

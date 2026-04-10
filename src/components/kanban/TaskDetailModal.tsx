@@ -42,7 +42,7 @@ function fromDateTimeInput(str: string): Date {
   return new Date(str)
 }
 
-const normalize = (s: string) => 
+const normalize = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
@@ -67,7 +67,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     if (selectedDeps.length === 0) return;
 
     const maxEnd = new Date(Math.max(...selectedDeps.map(d => new Date(d.endDate).getTime())));
-    
+
     setIsCalculating(true);
     try {
       const nextStart = await getNextWorkingDayAction(maxEnd);

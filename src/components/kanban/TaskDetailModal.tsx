@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
-import { calculateEndDateAction, calculateHoursAction } from "@/lib/actions/time";
+import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2 } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
@@ -42,6 +42,9 @@ function fromDateTimeInput(str: string): Date {
   return new Date(str)
 }
 
+const normalize = (s: string) => 
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
   const [isPending, startTransition] = useTransition();
   const [localName, setLocalName] = useState(task?.name ?? "");
@@ -55,6 +58,28 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [selectedAssignees, setSelectedAssignees] = useState<TaskAssignee[]>(task?.assignees ?? []);
   const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors.map(p => p.predecessor.id) ?? []);
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
+
+  const handlePredecessorChange = async (newIds: string[]) => {
+    setPredecessorIds(newIds);
+    if (newIds.length === 0) return;
+
+    const selectedDeps = allTasks.filter(t => newIds.includes(t.id));
+    if (selectedDeps.length === 0) return;
+
+    const maxEnd = new Date(Math.max(...selectedDeps.map(d => new Date(d.endDate).getTime())));
+    
+    setIsCalculating(true);
+    try {
+      const nextStart = await getNextWorkingDayAction(maxEnd);
+      setStartDate(toDateTimeLocalValue(nextStart));
+      const newEnd = await calculateEndDateAction(nextStart, estimatedHours);
+      setEndDate(toDateTimeLocalValue(newEnd));
+    } catch (err) {
+      console.error("Error al recalcular fechas por dependencias:", err);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [newSubTaskName, setNewSubTaskName] = useState("");
   const calcHoursTimer = useRef<NodeJS.Timeout | null>(null);
@@ -251,7 +276,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const otherTasks = allTasks.filter(t => t.id !== task.id);
 
   const filteredParentTasks = otherTasks
-    .filter(t => t.name.toLowerCase().includes(parentSearch.toLowerCase()))
+    .filter(t => normalize(t.name).includes(normalize(parentSearch)))
     .sort((a, b) => {
       if (a.id === parentId) return -1;
       if (b.id === parentId) return 1;
@@ -260,7 +285,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
   // Lógica de filtrado y ordenación para Dependencias
   const filteredDepTasks = otherTasks
-    .filter(t => t.name.toLowerCase().includes(depSearch.toLowerCase()))
+    .filter(t => normalize(t.name).includes(normalize(depSearch)))
     .sort((a, b) => {
       const aSel = predecessorIds.includes(a.id);
       const bSel = predecessorIds.includes(b.id);
@@ -553,7 +578,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 {filteredDepTasks.map((t: TaskWithRelations) => (
                   <button
                     key={t.id}
-                    onClick={() => setPredecessorIds(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                    onClick={() => handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id])}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${predecessorIds.includes(t.id)
                       ? "bg-blue-50 border-blue-300 text-blue-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"

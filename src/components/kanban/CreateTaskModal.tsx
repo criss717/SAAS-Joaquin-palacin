@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { createTask, TaskWithRelations } from "@/lib/actions/tasks";
-import { calculateEndDateAction, calculateHoursAction } from "@/lib/actions/time";
+import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { cn } from "@/lib/utils";
 import { Clock, Package, Plus, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2 } from "lucide-react";
 import { TaskStatus } from "@prisma/client";
@@ -44,6 +44,9 @@ function toDateTimeLocalValue(d: Date | string): string {
   }
 }
 
+const normalize = (s: string) => 
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
 export function CreateTaskModal({ open, projectId, stages, users, allTasks, initialStage, onClose, onTaskCreated }: Props) {
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState("");
@@ -59,6 +62,28 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [predecessorIds, setPredecessorIds] = useState<string[]>([]);
   const [parentId, setParentId] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  const handlePredecessorChange = async (newIds: string[]) => {
+    setPredecessorIds(newIds);
+    if (newIds.length === 0) return;
+
+    const selectedDeps = allTasks.filter(t => newIds.includes(t.id));
+    if (selectedDeps.length === 0) return;
+
+    const maxEnd = new Date(Math.max(...selectedDeps.map(d => new Date(d.endDate).getTime())));
+    
+    setIsCalculating(true);
+    try {
+      const nextStart = await getNextWorkingDayAction(maxEnd);
+      setStartDate(toDateTimeLocalValue(nextStart));
+      const newEnd = await calculateEndDateAction(nextStart, estimatedHours);
+      setEndDate(toDateTimeLocalValue(newEnd));
+    } catch (err) {
+      console.error("Error al recalcular fechas por dependencias:", err);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
 
   const [parentSearch, setParentSearch] = useState("");
   const [depSearch, setDepSearch] = useState("");
@@ -335,7 +360,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                       {parentId === null && <CheckCircle2 size={12} />}
                     </button>
                     {allTasks
-                      .filter(t => t.name.toLowerCase().includes(parentSearch.toLowerCase()))
+                      .filter(t => normalize(t.name).includes(normalize(parentSearch)))
                       .sort((a, b) => {
                          if (a.id === parentId) return -1;
                          if (b.id === parentId) return 1;
@@ -378,7 +403,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                   <p className="text-[10px] text-gray-400 italic p-2">No hay tareas disponibles</p>
                 ) : (
                   allTasks
-                    .filter(t => t.name.toLowerCase().includes(depSearch.toLowerCase()))
+                    .filter(t => normalize(t.name).includes(normalize(depSearch)))
                     .sort((a, b) => {
                        const aSel = predecessorIds.includes(a.id);
                        const bSel = predecessorIds.includes(b.id);
@@ -389,7 +414,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     .map(t => (
                       <button
                         key={t.id}
-                        onClick={() => setPredecessorIds(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                        onClick={() => handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id])}
                         className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${predecessorIds.includes(t.id)
                           ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
                           : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"

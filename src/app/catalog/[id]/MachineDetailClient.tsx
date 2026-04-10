@@ -23,6 +23,9 @@ export interface Part {
 }
 export type Machine = { id: string; name: string; description: string | null; parts: Part[] };
 
+const normalize = (s: string) => 
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
 export function MachineDetailClient({ initialMachine }: { initialMachine: Machine }) {
   const [machine, setMachine] = useState<Machine>(initialMachine);
 
@@ -130,9 +133,9 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
   // Lógica de Filtrado Recursivo
   const matchesSearch = (part: Part, term: string): boolean => {
     if (!term) return true;
-    const lowerTerm = term.toLowerCase();
+    const normalizedTerm = normalize(term);
     // ¿Coincide esta pieza?
-    if (part.name.toLowerCase().includes(lowerTerm)) return true;
+    if (normalize(part.name).includes(normalizedTerm)) return true;
     // ¿Coincide alguna sub-pieza?
     const children = machine.parts.filter(p => p.parentId === part.id);
     return children.some(c => matchesSearch(c, term));
@@ -143,7 +146,7 @@ export function MachineDetailClient({ initialMachine }: { initialMachine: Machin
     if (searchTerm && !matchesSearch(part, searchTerm)) return null;
 
     const children = machine.parts.filter(p => p.parentId === part.id);
-    const isHighlight = searchTerm && part.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const isHighlight = searchTerm && normalize(part.name).includes(normalize(searchTerm));
 
     return (
       <div key={part.id} className="border-l-2 border-gray-100 pl-4 py-2 mt-2 relative">

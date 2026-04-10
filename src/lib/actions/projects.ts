@@ -77,3 +77,128 @@ export async function updateProjectAction(projectId: string, name: string) {
     return { success: false, error: "Error al actualizar el proyecto." };
   }
 }
+
+/**
+ * DESPLAZAMIENTO INTELIGENTE DE PROYECTO
+ * Desplaza todas las tareas (que no tengan progreso ni estén terminadas)
+ * según el delta de horas laborales entre la fecha de inicio antigua y la nueva.
+ */
+export async function shiftProjectDates(projectId: string, newStartDate: Date) {
+  const { TimeEngine } = await import("@/lib/time-engine");
+  
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { tasks: true }
+    });
+
+    if (!project) return { success: false, error: "Proyecto no encontrado." };
+
+    const oldStart = new Date(project.startDate);
+    const newStartRaw = new Date(newStartDate);
+    // Forzar 08:00 AM para el inicio del proyecto
+    newStartRaw.setHours(8, 0, 0, 0);
+
+    // 1. Obtener motor de tiempo
+    const schedules = await prisma.workSchedule.findMany({ orderBy: { validFrom: "asc" } });
+    const holidays = await prisma.holiday.findMany();
+    const engine = new TimeEngine(schedules, holidays);
+
+    // Helper para normalizar: si una fecha cae en un periodo no laborable, mover al inicio de la siguiente jornada
+    const normalizeToWorkStart = (date: Date) => {
+      const d = new Date(date);
+      let attempts = 0;
+      
+      // Mientras estemos en un periodo no laborable o fuera de horario (8 a 18), avanzamos
+      while (attempts < 365) { // Seguridad contra bucles infinitos
+        const schedule = engine.getScheduleForDate(d);
+        const isLaborable = engine.isWorkingDay(d, schedule) && !engine.isHoliday(d);
+        const hour = d.getHours();
+
+        if (isLaborable && hour >= 8 && hour < 18) {
+          break;
+        }
+
+        if (!isLaborable || hour >= 18) {
+          d.setDate(d.getDate() + 1);
+          d.setHours(8, 0, 0, 0);
+        } else if (hour < 8) {
+          d.setHours(8, 0, 0, 0);
+        }
+        attempts++;
+      }
+      return d;
+    };
+
+    // 2. Normalizar el propio inicio del proyecto y calcular delta
+    const newStart = normalizeToWorkStart(newStartRaw);
+    const isForward = newStart >= oldStart;
+    const absDeltaHours = isForward 
+      ? engine.calculateBusinessHours(oldStart, newStart)
+      : engine.calculateBusinessHours(newStart, oldStart);
+    
+    const deltaHours = isForward ? absDeltaHours : -absDeltaHours;
+
+    if (deltaHours === 0 && newStart.getTime() === oldStart.getTime()) {
+      return { success: true, movedTasks: 0 };
+    }
+
+    // 3. Actualizar tareas elegibles (status != HECHO y progress == 0)
+    let movedCount = 0;
+    const tasksToUpdate = project.tasks.filter(t => t.status !== "HECHO" && t.progress === 0);
+
+    await prisma.$transaction(
+      tasksToUpdate.map(t => {
+        const oldTaskStart = new Date(t.startDate);
+        const oldTaskEnd = new Date(t.endDate);
+        
+        let newTaskStart: Date;
+        let newTaskEnd: Date;
+
+        if (deltaHours >= 0) {
+          // Desplazar inicio
+          newTaskStart = normalizeToWorkStart(engine.addBusinessHours(oldTaskStart, deltaHours));
+          
+          if (t.stage === "Pedido Externo" && (t.deliveryDays || 0) > 0) {
+            // Pedido externo: Mantiene días naturales desde el nuevo inicio
+            newTaskEnd = new Date(newTaskStart);
+            newTaskEnd.setDate(newTaskEnd.getDate() + (t.deliveryDays || 1));
+          } else {
+            // Fabricación/Otros: Desplazar fin por el mismo delta y normalizarlo
+            newTaskEnd = normalizeToWorkStart(engine.addBusinessHours(oldTaskEnd, deltaHours));
+          }
+        } else {
+          // Para retroceder, usamos desplazamiento por milisegundos y normalizamos el resultado
+          const diffMs = newStart.getTime() - oldStart.getTime();
+          newTaskStart = normalizeToWorkStart(new Date(oldTaskStart.getTime() + diffMs));
+          newTaskEnd = normalizeToWorkStart(new Date(oldTaskEnd.getTime() + diffMs));
+        }
+
+        movedCount++;
+        return prisma.task.update({
+          where: { id: t.id },
+          data: {
+            startDate: newTaskStart,
+            endDate: newTaskEnd
+          }
+        });
+      })
+    );
+
+    // 4. Actualizar fecha del proyecto
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { startDate: newStart }
+    });
+
+    console.log(`[ShiftProject] Successfully moved ${movedCount} tasks for project ${projectId}`);
+    
+    // Única revalidación al final para evitar timeouts/input stream errors
+    revalidatePath("/", "layout"); 
+
+    return { success: true, movedTasks: movedCount };
+  } catch (error) {
+    console.error("Error shifting project:", error);
+    return { success: false, error: "Error al desplazar las fechas del proyecto. Por favor, refresca e intenta de nuevo." };
+  }
+}

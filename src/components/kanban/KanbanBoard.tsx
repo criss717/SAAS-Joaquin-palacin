@@ -10,26 +10,38 @@ import { Settings2, Plus, X } from "lucide-react";
 import { TaskDetailModal } from "./TaskDetailModal";
 import { StageManagerModal } from "./StageManagerModal";
 import { CreateTaskModal } from "./CreateTaskModal";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { KanbanColumn } from "./KanbanColumn";
 import { GanttChart } from "@/components/gantt/GanttChart";
 import { updateTaskDates } from "@/lib/actions/tasks";
+import { shiftProjectDates } from "@/lib/actions/projects";
+import { toast } from "sonner";
+import Swal from "sweetalert2";
+import { Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 type Stage = { id: string; name: string; color: string; order: number; projectId: string }
 type User = { id: string; name: string; email: string; role: string }
+type Project = { id: string; name: string; startDate: Date }
 
 type Props = {
   initialTasks: TaskWithRelations[]
   initialStages: Stage[]
   users: User[]
   isAdmin: boolean
+  project: Project
 }
 
 // Se eliminó la definición local redundante de TaskStatus
+const normalize = (s: string) => 
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Props) {
+export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, project }: Props) {
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks);
   const [stages, setStages] = useState<Stage[]>(initialStages);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -44,6 +56,38 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
   const [preSelectedStage, setPreSelectedStage] = useState<string | undefined>(undefined);
   const [showDone, setShowDone] = useState(true);
   const [viewMode, setViewMode] = useState<"kanban" | "gantt">("kanban");
+  const [isShifting, setIsShifting] = useState(false);
+
+  const handleShiftProject = async (newDate: string) => {
+    if (!newDate) return;
+    const date = new Date(newDate);
+    
+    // Confirmación con SweetAlert2
+    const result = await Swal.fire({
+      title: '¿Desplazar proyecto?',
+      text: "Esto moverá todas las tareas pendientes según el nuevo inicio. Las tareas con progreso o terminadas no se moverán.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3b82f6',
+      cancelButtonColor: '#94a3b8',
+      confirmButtonText: 'Sí, desplazar',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (!result.isConfirmed) return;
+
+    setIsShifting(true);
+    const res = await shiftProjectDates(project.id, date);
+    setIsShifting(false);
+
+    if (res.success) {
+      toast.success(`Proyecto desplazado. Se actualizaron ${res.movedTasks} tareas.`);
+      // Recargar la página para obtener los nuevos datos
+      window.location.reload();
+    } else {
+      toast.error(res.error || "Error al desplazar el proyecto");
+    }
+  };
 
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
@@ -158,7 +202,8 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
 
   // Filtrado compartido para ambas vistas
   const filteredTasks = tasks.filter(t => {
-    const matchesSearch = searchTask === "" || t.name.toLowerCase().includes(searchTask.toLowerCase());
+    const term = normalize(searchTask);
+    const matchesSearch = term === "" || normalize(t.name).includes(term);
     const matchesStatus = filterStatus === "" || t.status === filterStatus;
     const matchesAssignee = filterAssignee === "" || t.assignees.some(a => a.id === filterAssignee);
     const matchesDone = showDone || t.status !== "HECHO";
@@ -194,12 +239,42 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
             </div>
           </div>
 
-          {/* Espacio reservado para botones de acción secundarios si fuesen necesarios */}
           <div className="flex gap-2">
             {isAdmin && (
-              <Button variant="ghost" onClick={() => setShowStageManager(true)} className="h-8 rounded-lg border-t-2 border-b-0 border-l-0 border-r-0 border-blue-600 text-gray-500 hover:border-b-2 hover:border-l-2 hover:border-r-2 hover:text-gray-600 font-bold px-3 text-[10px] transition-all uppercase tracking-wider">
-                <Settings2 size={12} className="mr-1.5" /> Gestionar Etapas
-              </Button>
+              <>
+                <Popover>
+                  <PopoverTrigger 
+                    disabled={isShifting}
+                    className={cn(
+                      buttonVariants({ variant: "ghost" }),
+                      "h-8 rounded-lg border-t-2 border-b-0 border-l-0 border-r-0 border-emerald-500 text-gray-500 hover:border-b-2 hover:border-l-2 hover:border-r-2 hover:text-emerald-700 font-bold px-3 text-[10px] transition-all uppercase tracking-wider"
+                    )}
+                  >
+                    {isShifting ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : <CalendarIcon size={12} className="mr-1.5 text-emerald-500" />}
+                    Inicio: {format(new Date(project.startDate), "dd MMM yyyy", { locale: es })}
+                  </PopoverTrigger>
+                  <PopoverContent className="z-1000 w-auto p-4 rounded-xl shadow-2xl border-gray-100" align="end">
+                    <div className="flex flex-col gap-3">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nueva Fecha de Inicio</label>
+                      <input 
+                        type="date" 
+                        defaultValue={format(new Date(project.startDate), "yyyy-MM-dd")}
+                        onChange={(e) => {
+                          if (e.target.value) handleShiftProject(e.target.value);
+                        }}
+                        className="text-xs p-2 border border-gray-100 rounded-lg focus:ring-2 focus:ring-emerald-100 outline-none cursor-pointer"
+                      />
+                      <p className="text-[9px] text-gray-400 leading-tight max-w-[180px]">
+                        Se desplazarán inteligentemente las tareas con 0% de progreso.
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <Button variant="ghost" onClick={() => setShowStageManager(true)} className="h-8 rounded-lg border-t-2 border-b-0 border-l-0 border-r-0 border-blue-600 text-gray-500 hover:border-b-2 hover:border-l-2 hover:border-r-2 hover:text-gray-600 font-bold px-3 text-[10px] transition-all uppercase tracking-wider">
+                  <Settings2 size={12} className="mr-1.5" /> Gestionar Etapas
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -229,7 +304,10 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin }: Pro
               placeholder="Buscar tarea, pieza o componente..."
               value={searchTask}
               onChange={(e) => setSearchTask(e.target.value)}
-              className={`h-9 text-xs pl-3 pr-8 w-full border-gray-200 rounded-xl transition-all focus:ring-2 focus:ring-blue-100 ${searchTask ? "border-blue-400" : ""}`}
+              className={cn(
+                "h-9 text-xs pl-3 pr-8 w-full border-gray-200 rounded-xl transition-all focus:ring-2 focus:ring-blue-100",
+                searchTask && "border-blue-400 border-b-3 border-b-blue-700 shadow-sm"
+              )}
             />
             {searchTask && (
               <button

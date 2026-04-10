@@ -54,3 +54,12 @@ export async function calculateHoursAction(startDate: Date, endDate: Date): Prom
   const engine = await getEngine();
   return engine.calculateBusinessHours(startDate, endDate);
 }
+
+/**
+ * Calcula el inicio de la siguiente jornada laborable tras una fecha de referencia.
+ */
+export async function getNextWorkingDayAction(date: Date): Promise<Date> {
+  if (!date || isNaN(date.getTime())) throw new Error("Fecha de referencia inválida.");
+  const engine = await getEngine();
+  return engine.getNextWorkingDayStart(date);
+}

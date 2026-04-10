@@ -36,6 +36,7 @@ export default async function DashboardPage() {
           initialStages={stages}
           users={users}
           isAdmin={isAdmin}
+          project={currentProject}
         />
       </div>
     </div>

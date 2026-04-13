@@ -63,7 +63,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [progress, setProgress] = useState(0);
   const [startDate, setStartDate] = useState(getDefaultStartDate);
   const [endDate, setEndDate] = useState("");
-  const [estimatedHours, setEstimatedHours] = useState<number>(8);
+  const [estimatedHours, setEstimatedHours] = useState<number>(0);
   const [isCalculating, setIsCalculating] = useState(false);
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [predecessorIds, setPredecessorIds] = useState<string[]>([]);

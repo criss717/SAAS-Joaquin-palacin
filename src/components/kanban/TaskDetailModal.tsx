@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDates, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
+import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2 } from "lucide-react";
 import Swal from "sweetalert2";
@@ -198,11 +198,19 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         updates.push(updateTaskProgress(task.id, localProgress));
       }
 
+      let cascadedUpdates: TaskWithRelations[] = []
       if (startDate && endDate) {
         const origStart = toDateTimeLocalValue(task.startDate);
         const origEnd = toDateTimeLocalValue(task.endDate);
         if (startDate !== origStart || endDate !== origEnd || estimatedHours !== task.estimatedHours) {
-          updates.push(updateTaskDates(task.id, fromDateTimeInput(startDate), fromDateTimeInput(endDate), estimatedHours));
+          // Usamos cascade: actualiza la tarea y propaga a sucesoras
+          const result = await updateTaskDatesAndCascade(
+            task.id,
+            fromDateTimeInput(startDate),
+            fromDateTimeInput(endDate),
+            estimatedHours
+          );
+          cascadedUpdates = result.updated;
         }
       }
 
@@ -224,6 +232,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
       await Promise.all(updates);
 
+      // Primero notificar la tarea principal con todos los datos locales actualizados
       onTaskUpdated({
         ...task,
         name: localName,
@@ -237,6 +246,13 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         parentId: parentId,
         predecessors: predecessorIds.map(id => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
       });
+
+      // Luego notificar cada tarea cascadeada (sucesoras que se movieron)
+      // Omitimos la primera porque ya la notificamos arriba con los datos de la UI
+      for (const cascaded of cascadedUpdates.slice(1)) {
+        onTaskUpdated(cascaded);
+      }
+
       onClose();
     });
   };

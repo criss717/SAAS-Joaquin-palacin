@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { KanbanColumn } from "./KanbanColumn";
 import { GanttChart } from "@/components/gantt/GanttChart";
-import { updateTaskDates } from "@/lib/actions/tasks";
+import { updateTaskDatesAndCascade } from "@/lib/actions/tasks";
 import { shiftProjectDates } from "@/lib/actions/projects";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
@@ -414,8 +414,15 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
           <GanttChart
             tasks={filteredTasks}
             onTaskDatesChange={async (id, start, end) => {
+              // Actualizar optimista la tarea arrastrada
               setTasks(prev => prev.map(t => t.id === id ? { ...t, startDate: start, endDate: end } : t));
-              await updateTaskDates(id, start, end);
+              // Persistir y propagar en cadena a sucesoras
+              const { updated } = await updateTaskDatesAndCascade(id, start, end);
+              // Actualizar el estado con todas las tareas modificadas en cascada
+              setTasks(prev => prev.map(t => {
+                const cascaded = updated.find(u => u.id === t.id);
+                return cascaded ? { ...t, startDate: cascaded.startDate, endDate: cascaded.endDate, estimatedHours: cascaded.estimatedHours } : t;
+              }));
             }}
             onTaskDoubleClick={(task) => setSelectedTask(task)}
           />

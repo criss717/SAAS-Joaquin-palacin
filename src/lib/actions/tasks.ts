@@ -212,6 +212,134 @@ export async function updateTaskDates(taskId: string, startDate: Date, endDate: 
   revalidatePath("/gantt")
 }
 
+// Helper de inclusión reutilizable para tareas con relaciones completas
+const taskInclude = {
+  assignees: { include: { user: { select: { id: true, name: true } } } },
+  subTasks: { select: { id: true, name: true, stage: true, status: true } },
+  predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
+  successors: { include: { successor: { select: { id: true, name: true } } } },
+} as const
+
+function flattenTask(t: PrismaTaskWithRelations): TaskWithRelations {
+  return {
+    ...t,
+    assignees: t.assignees.map((a) => ({ id: a.user.id, name: a.user.name })),
+  } as unknown as TaskWithRelations
+}
+
+/**
+ * Actualiza fechas de una tarea y propaga el cambio en cadena (BFS) a sus sucesoras.
+ * Reglas:
+ *  - Solo se mueven tareas con status != "HECHO" y != "CANCELADO".
+ *  - Una sucesor con múltiples predecesores espera al más tardío de todos.
+ *  - La propagación es anti-cíclica (Set de visitados).
+ * Devuelve todas las tareas modificadas (la raíz + las cascadeadas).
+ */
+export async function updateTaskDatesAndCascade(
+  taskId: string,
+  startDate: Date,
+  endDate: Date,
+  estimatedHours?: number
+): Promise<{ updated: TaskWithRelations[] }> {
+  await requireAuth()
+  if (!startDate || !endDate) throw new Error("Fechas inválidas")
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) throw new Error("Fecha inválida (NaN)")
+
+  // Importar TimeEngine dinámicamente (solo server-side)
+  const { TimeEngine } = await import("@/lib/time-engine")
+  const schedules = await prisma.workSchedule.findMany({ orderBy: { validFrom: "asc" } })
+  const holidays = await prisma.holiday.findMany()
+  const engine = new TimeEngine(schedules, holidays)
+
+  const updated: TaskWithRelations[] = []
+
+  // 1. Actualizar la tarea raíz
+  const dataToUpdate: Record<string, string | number | Date> = { startDate, endDate }
+  if (estimatedHours !== undefined) dataToUpdate.estimatedHours = estimatedHours
+
+  const rootRaw = await prisma.task.update({
+    where: { id: taskId },
+    data: dataToUpdate,
+    include: taskInclude,
+  })
+  updated.push(flattenTask(rootRaw as unknown as PrismaTaskWithRelations))
+
+  // 2. BFS: cola de trabajo → [{ successorId, latestPredEnd }]
+  // Mapa auxiliar: taskId → endDate actual (para calcular max de predecesoras)
+  const knownEnds = new Map<string, Date>([[taskId, endDate]])
+
+  // Cola de IDs de sucesores a procesar
+  const queue: string[] = rootRaw.successors.map((s) => (s as { successor: { id: string } }).successor.id)
+  const visited = new Set<string>([taskId])
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!
+    if (visited.has(currentId)) continue
+    visited.add(currentId)
+
+    // Cargar la tarea actual con sus predecesoras
+    const currentTask = await prisma.task.findUnique({
+      where: { id: currentId },
+      include: {
+        ...taskInclude,
+        predecessors: {
+          include: {
+            predecessor: { select: { id: true, name: true, endDate: true } }
+          }
+        }
+      }
+    })
+    if (!currentTask) continue
+
+    // Saltamos HECHO y CANCELADO — trabajo completado o irrelevante
+    if (currentTask.status === "HECHO" || currentTask.status === "CANCELADO") continue
+
+    // Calcular la fecha de fin más tardía de TODOS sus predecesores
+    let maxPredEnd: Date | null = null
+    for (const dep of currentTask.predecessors) {
+      const pred = dep.predecessor as { id: string; name: string; endDate: Date }
+      // Usamos la fecha actualizada si la procesamos en esta cadena, sino la de BD
+      const predEnd = knownEnds.get(pred.id) ?? new Date(pred.endDate)
+      if (!maxPredEnd || predEnd > maxPredEnd) {
+        maxPredEnd = predEnd
+      }
+    }
+
+    if (!maxPredEnd) continue // Sin predecesores conocidos, no tocamos
+
+    // Calcular nuevo inicio como el siguiente día laborable tras el predecesor más tardío
+    const newStart = engine.getNextWorkingDayStart(new Date(maxPredEnd))
+
+    // Actualizar en ambas direcciones (adelante o atrás).
+    // Solo omitimos si la fecha es prácticamente la misma (< 1 min) para evitar escrituras innecesarias.
+    const currentStart = new Date(currentTask.startDate)
+    if (Math.abs(newStart.getTime() - currentStart.getTime()) < 60_000) continue
+
+    // Calcular nueva fecha de fin respetando horas estimadas
+    const hours = currentTask.estimatedHours ?? 8
+    const newEnd = engine.addBusinessHours(new Date(newStart), hours)
+
+    // Actualizar en BD
+    const updatedRaw = await prisma.task.update({
+      where: { id: currentId },
+      data: { startDate: newStart, endDate: newEnd },
+      include: taskInclude,
+    })
+    updated.push(flattenTask(updatedRaw as unknown as PrismaTaskWithRelations))
+    knownEnds.set(currentId, newEnd)
+
+    // Encolar las sucesoras de esta tarea
+    for (const s of updatedRaw.successors) {
+      const succId = (s as { successor: { id: string } }).successor.id
+      if (!visited.has(succId)) queue.push(succId)
+    }
+  }
+
+  revalidatePath("/gantt")
+  return { updated }
+}
+
+
 /** Actualiza asignados de una tarea (reemplaza todos) */
 export async function updateTaskAssignees(taskId: string, userIds: string[]) {
   await requireAuth()

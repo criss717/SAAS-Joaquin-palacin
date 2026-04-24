@@ -516,3 +516,14 @@ export async function getUsers() {
     orderBy: { name: "asc" },
   })
 }
+
+export async function updateTaskIsAssembly(taskId: string, isAssembly: boolean) {
+  await requireAdmin();
+  const updated = await prisma.task.update({
+    where: { id: taskId },
+    data: { isAssembly },
+    include: taskInclude,
+  });
+  revalidatePath("/");
+  return flattenTask(updated as unknown as PrismaTaskWithRelations);
+}

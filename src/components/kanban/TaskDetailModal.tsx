@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback, useRef } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity } from "@/lib/actions/tasks";
+import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity, updateTaskIsAssembly } from "@/lib/actions/tasks";
 import { updateCatalogFromTask } from "@/lib/actions/catalog";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw } from "lucide-react";
@@ -48,46 +48,59 @@ const normalize = (s: string) =>
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
   const [isPending, startTransition] = useTransition();
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
+  const isClosingRef = useRef(false);
+
+  // Calcular unitHours inicial una sola vez
+  const initialUnitHours = task?.unitEstimatedHours ?? ((task?.estimatedHours ?? 0) / (task?.quantity || 1));
+
+  // Estados inicializados directamente desde task.
+  // Gracias a key={selectedTask?.id} en KanbanBoard, este componente se
+  // DESTRUYE y RECREA cada vez que cambias de tarea, así que useState
+  // se ejecuta fresco cada vez. No hace falta useEffect de sincronización.
   const [localName, setLocalName] = useState(task?.name ?? "");
   const [selectedStage, setSelectedStage] = useState(task?.stage ?? "");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>(task?.status ?? "EN_PROCESO");
   const [localProgress, setLocalProgress] = useState(task?.progress ?? 0);
   const [startDate, setStartDate] = useState(() => toDateTimeLocalValue(task?.startDate ?? ""));
   const [endDate, setEndDate] = useState(() => toDateTimeLocalValue(task?.endDate ?? ""));
-  const [estimatedHours, setEstimatedHours] = useState<number>(task?.estimatedHours ?? 1);
+  const [estimatedHours, setEstimatedHours] = useState<number>(task?.estimatedHours ?? 0);
   const [isCalculating, setIsCalculating] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<TaskAssignee[]>(task?.assignees ?? []);
-  const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors.map(p => p.predecessor.id) ?? []);
+  const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors?.map(p => p.predecessor.id) ?? []);
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
   const [localQuantity, setLocalQuantity] = useState(task?.quantity ?? 1);
-  const [unitHours, setUnitHours] = useState(() => {
-    if (task?.unitEstimatedHours !== null && task?.unitEstimatedHours !== undefined) return task.unitEstimatedHours;
-    if (task?.estimatedHours && task?.quantity) return task.estimatedHours / task.quantity;
-    return 8;
-  });
+  const [localIsAssembly, setLocalIsAssembly] = useState(task?.isAssembly ?? false);
+  const [unitHours, setUnitHours] = useState(initialUnitHours);
 
-  const hasHoursChanged = task ? Math.abs(unitHours - (task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1)))) > 0.05 : false;
+  const hasHoursChanged = Math.abs(unitHours - initialUnitHours) > 0.05;
 
-  // Detección de cambios simplificada para evitar falsos positivos
+  // Detección de cambios: comparamos contra task original (inmutable durante la vida del modal)
   const hasChanges = () => {
     if (!task || isSyncingCatalog) return false;
 
-    // Solo comparamos campos críticos que el usuario suele tocar
+    const origAssigneeIds = (task.assignees ?? []).map(a => a.id).sort().join(',');
+    const curAssigneeIds = selectedAssignees.map(a => a.id).sort().join(',');
+
+    const origPredIds = (task.predecessors ?? []).map(p => p.predecessor.id).sort().join(',');
+    const curPredIds = [...predecessorIds].sort().join(',');
+
     return (
-      localName !== task.name ||
-      selectedStage !== task.stage ||
-      selectedStatus !== task.status ||
-      localProgress !== task.progress ||
-      Math.abs(unitHours - (task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1)))) > 0.05 ||
-      localQuantity !== task.quantity ||
-      parentId !== task.parentId
+      localName !== (task.name ?? "") ||
+      selectedStage !== (task.stage ?? "") ||
+      selectedStatus !== (task.status ?? "EN_PROCESO") ||
+      localProgress !== (task.progress ?? 0) ||
+      localIsAssembly !== (task.isAssembly ?? false) ||
+      localQuantity !== (task.quantity ?? 1) ||
+      (parentId ?? null) !== (task.parentId ?? null) ||
+      Math.abs(unitHours - initialUnitHours) > 0.05 ||
+      origAssigneeIds !== curAssigneeIds ||
+      origPredIds !== curPredIds
     );
   };
 
   const handleCloseAttempt = async () => {
     if (isClosingRef.current) return;
 
-    // Si no hay cambios, cerramos directamente
     if (!hasChanges()) {
       onClose();
       return;
@@ -107,23 +120,9 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     if (result.isConfirmed) {
       isClosingRef.current = true;
       onClose();
-      // Resetear después de que el diálogo se haya desmontado
-      setTimeout(() => {
-        isClosingRef.current = false;
-      }, 500);
+      setTimeout(() => { isClosingRef.current = false; }, 500);
     }
   };
-
-  // Efecto para asegurar que unitHours siempre sea coherente con estimatedHours / quantity
-  // Especialmente útil para tareas antiguas que cargan con null
-  useEffect(() => {
-    if (estimatedHours && localQuantity) {
-      const calculatedUnit = estimatedHours / localQuantity;
-      if (calculatedUnit !== unitHours) {
-        setUnitHours(calculatedUnit);
-      }
-    }
-  }, [estimatedHours, localQuantity, unitHours]);
 
   const handlePredecessorChange = async (newIds: string[]) => {
     setPredecessorIds(newIds);
@@ -151,7 +150,6 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const calcHoursTimer = useRef<NodeJS.Timeout | null>(null);
   const calcEndTimer = useRef<NodeJS.Timeout | null>(null);
   const [error, setError] = useState("");
-  const isClosingRef = useRef(false);
 
   const handleCalculateEndDate = useCallback(async (startVal: string, hoursVal: number) => {
     if (!startVal || !hoursVal || hoursVal <= 0) return;
@@ -308,6 +306,12 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
           cascadedUpdates = [...cascadedUpdates, ...res.updated];
         }
 
+        if (localIsAssembly !== task.isAssembly) {
+          const updatedTaskAssembly = await updateTaskIsAssembly(task.id, localIsAssembly);
+          // Actualizamos la referencia local para que onTaskUpdated tenga el dato correcto
+          onTaskUpdated(updatedTaskAssembly as TaskWithRelations);
+        }
+
         // ASEGURAR QUE EL TIEMPO UNITARIO SE GUARDE SIEMPRE (especialmente para tareas antiguas con null)
         if (unitHours !== task.unitEstimatedHours) {
           // Si no hay una acción específica, podemos usar updateTaskDatesAndCascade con las fechas actuales
@@ -330,6 +334,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
           stage: selectedStage,
           status: selectedStatus,
           progress: localProgress,
+          isAssembly: localIsAssembly,
           estimatedHours: estimatedHours,
           startDate: startDate ? fromDateTimeInput(startDate) : task.startDate,
           endDate: endDate ? fromDateTimeInput(endDate) : task.endDate,
@@ -454,11 +459,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">
-            {task.isAssembly && (
-              <span className="flex items-center gap-1 text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold uppercase">
-                <Package size={10} /> Ensamble
-              </span>
-            )}
+            <button
+              type="button"
+              onClick={() => setLocalIsAssembly(!localIsAssembly)}
+              className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase transition-all cursor-pointer ${localIsAssembly ? 'bg-purple-100 text-purple-700 ring-2 ring-purple-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              title="Haz clic para cambiar entre Pieza y Ensamble"
+            >
+              <Package size={10} /> {localIsAssembly ? 'Ensamble' : 'Pieza'}
+            </button>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${selectedStatus === 'HECHO' ? 'bg-green-100 text-green-700' : selectedStatus === 'CANCELADO' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
               {selectedStatus.replace('_', ' ')}
             </span>
@@ -474,7 +482,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
           <DialogDescription className="sr-only">Detalles de la tarea {task.name}</DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
           {/* COLUMNA IZQUIERDA: Progreso y Sub-tareas */}
           <div className="space-y-5">
@@ -566,7 +574,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   onChange={e => {
                     const q = Math.max(1, Number(e.target.value));
                     setLocalQuantity(q);
-                    setEstimatedHours(q * unitHours);
+                    setEstimatedHours(Math.round(q * unitHours));
                     // No recalculamos fin aquí, se hará al guardar o si tocan fechas
                   }}
                   className="text-sm h-9 rounded-xl border-gray-200"
@@ -580,8 +588,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
                   </button>
                 </Label>
-                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
-                <p className="text-[9px] text-gray-400 mt-1">({unitHours}h x {localQuantity} ud)</p>
+                <Input type="number" step="0.1" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(Number(e.target.value).toFixed(1)))} className="text-sm h-9 rounded-xl border-gray-200" />
+                <p className="text-[9px] text-gray-400 mt-1">({unitHours.toFixed(1)}h x {localQuantity} ud)</p>
               </div>
 
               <div className="space-y-1.5">

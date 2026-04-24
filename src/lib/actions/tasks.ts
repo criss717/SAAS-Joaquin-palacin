@@ -22,6 +22,10 @@ export type TaskWithRelations = {
   orderIndex: number
   deliveryDays?: number
   estimatedHours?: number
+  unitEstimatedHours?: number
+  quantity: number
+  catalogPartId?: string | null
+  catalogOperationId?: string | null
   assignees: TaskAssignee[]
   subTasks: { id: string; name: string; stage: string; status: TaskStatus }[]
   predecessors: { predecessor: { id: string; name: string } }[]
@@ -42,6 +46,10 @@ interface PrismaTaskWithRelations {
   parentId: string | null
   orderIndex: number
   estimatedHours: number | null
+  unitEstimatedHours: number | null
+  quantity: number
+  catalogPartId: string | null
+  catalogOperationId: string | null
   deliveryDays: number | null
   createdAt: Date
   updatedAt: Date
@@ -239,7 +247,8 @@ export async function updateTaskDatesAndCascade(
   taskId: string,
   startDate: Date,
   endDate: Date,
-  estimatedHours?: number
+  estimatedHours?: number,
+  unitEstimatedHours?: number
 ): Promise<{ updated: TaskWithRelations[] }> {
   await requireAuth()
   if (!startDate || !endDate) throw new Error("Fechas inválidas")
@@ -256,6 +265,7 @@ export async function updateTaskDatesAndCascade(
   // 1. Actualizar la tarea raíz
   const dataToUpdate: Record<string, string | number | Date> = { startDate, endDate }
   if (estimatedHours !== undefined) dataToUpdate.estimatedHours = estimatedHours
+  if (unitEstimatedHours !== undefined) dataToUpdate.unitEstimatedHours = unitEstimatedHours
 
   const rootRaw = await prisma.task.update({
     where: { id: taskId },
@@ -339,6 +349,39 @@ export async function updateTaskDatesAndCascade(
   return { updated }
 }
 
+/** Actualiza la cantidad de una tarea y recalcula sus horas y las de sus sucesoras */
+export async function updateTaskQuantity(taskId: string, newQuantity: number) {
+  await requireAuth()
+  if (newQuantity < 1) throw new Error("La cantidad debe ser al menos 1")
+
+  const task = await prisma.task.findUnique({ where: { id: taskId } })
+  if (!task) throw new Error("Tarea no encontrada")
+
+  const unitHours = task.unitEstimatedHours || 8
+  const newTotalHours = unitHours * newQuantity
+
+  // Propagar cambio de horas (esto recalculará la fecha fin y cascada)
+  const { TimeEngine } = await import("@/lib/time-engine")
+  const schedules = await prisma.workSchedule.findMany({ orderBy: { validFrom: "asc" } })
+  const holidays = await prisma.holiday.findMany()
+  const engine = new TimeEngine(schedules, holidays)
+
+  const newEnd = engine.addBusinessHours(new Date(task.startDate), newTotalHours)
+
+  // Actualizar cantidad y unitHours en este paso
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { 
+      quantity: newQuantity,
+      estimatedHours: newTotalHours,
+      endDate: newEnd
+    }
+  })
+
+  // Lanzar cascada desde esta tarea para mover sucesoras si el fin cambió
+  return await updateTaskDatesAndCascade(taskId, task.startDate, newEnd, newTotalHours)
+}
+
 
 /** Actualiza asignados de una tarea (reemplaza todos) */
 export async function updateTaskAssignees(taskId: string, userIds: string[]) {
@@ -387,6 +430,8 @@ export async function createTask(data: {
   startDate: Date
   endDate: Date
   estimatedHours?: number
+  unitEstimatedHours?: number
+  quantity?: number
 }) {
   await requireAuth()
   const { assigneeIds, predecessorIds, ...rest } = data

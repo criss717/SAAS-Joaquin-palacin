@@ -31,6 +31,7 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [launchStartDate, setLaunchStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [projectQuantity, setProjectQuantity] = useState(1);
 
   // Búsqueda y Paginación
   const [searchTerm, setSearchTerm] = useState("");
@@ -40,13 +41,14 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
   const handleOpenLaunch = (machineId: string) => {
     setSelectedMachineToLaunch(machineId);
     setProjectName("");
+    setProjectQuantity(1);
     setIsLaunchModalOpen(true);
   };
 
   const handleLaunch = async () => {
     if (!selectedMachineToLaunch || !projectName.trim()) return;
     setLoading(true);
-    const res = await launchMachineToProject(selectedMachineToLaunch, projectName, new Date(launchStartDate));
+    const res = await launchMachineToProject(selectedMachineToLaunch, projectName, new Date(launchStartDate), projectQuantity);
     if (res.success) {
       setIsLaunchModalOpen(false);
       toast.success(`Máquina lanzada con éxito`);
@@ -420,8 +422,12 @@ export function CatalogClient({ initialMachines }: { initialMachines: Machine[] 
               <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha de Inicio del Trabajo</Label>
               <Input type="date" value={launchStartDate} onChange={e => setLaunchStartDate(e.target.value)} className="h-10 border-gray-200 rounded-xl" />
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Cantidad de Máquinas</Label>
+              <Input type="number" min={1} value={projectQuantity} onChange={e => setProjectQuantity(Number(e.target.value))} className="h-10 border-gray-200 rounded-xl" />
+            </div>
             <p className="text-xs text-gray-500">
-              Esta acción clonará todas las piezas y operaciones del despiece teórico hacia el tablero Kanban y Gantt real, calculando el cronograma completo a partir de la fecha seleccionada.
+              Esta acción clonará todas las piezas y operaciones del despiece teórico hacia el tablero Kanban y Gantt real, calculando el cronograma completo a partir de la fecha seleccionada y multiplicando tiempos por la cantidad.
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">

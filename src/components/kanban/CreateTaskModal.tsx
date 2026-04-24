@@ -68,6 +68,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [predecessorIds, setPredecessorIds] = useState<string[]>([]);
   const [parentId, setParentId] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState("");
 
   const handlePredecessorChange = async (newIds: string[]) => {
@@ -177,6 +178,8 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
         assigneeIds,
         predecessorIds,
         parentId: parentId || undefined,
+        quantity: quantity,
+        unitEstimatedHours: estimatedHours / (quantity || 1)
       });
 
       // Construir el objeto completo para el estado local
@@ -196,6 +199,8 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
         subTasks: [],
         predecessors: predecessorIds.map((id: string) => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
         successors: [],
+        quantity: task.quantity,
+        unitEstimatedHours: task.unitEstimatedHours,
       };
 
       onTaskCreated(newTask);
@@ -261,22 +266,28 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
               </div>
             </div>
 
-            {/* Estimación y Fecha */}
-            <div className="flex gap-3 px-1">
-              <div className="space-y-1.5 w-[100px] shrink-0">
+            {/* Estimación, Cantidad y Fecha */}
+            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100 mx-1">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                  Cantidad
+                </Label>
+                <Input type="number" min="1" value={quantity} onChange={e => setQuantity(Math.max(1, Number(e.target.value)))} className="text-sm h-9 rounded-xl border-gray-200" />
+              </div>
+              <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                  Horas Est.
+                  Horas Totales
                   <button type="button" onClick={() => handleCalculateHours(startDate, endDate)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
                     {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
                   </button>
                 </Label>
                 <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
               </div>
-              <div className="space-y-1.5 flex-1">
+              <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
                 <Input type="datetime-local" value={startDate} onChange={e => onStartDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
-              <div className="space-y-1.5 flex-1">
+              <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
                   <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
                   <button type="button" onClick={() => handleCalculateEndDate(startDate, estimatedHours)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">

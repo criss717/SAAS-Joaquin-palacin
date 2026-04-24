@@ -98,11 +98,18 @@ export const TaskCard = memo(({
               </div>
             </div>
 
-            {task.isAssembly && (
-              <span className="inline-block text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium mb-1.5">
-                Ensamble
-              </span>
-            )}
+            <div className="flex gap-1.5 flex-wrap items-center mb-1.5">
+              {task.isAssembly && (
+                <span className="inline-block text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                  Ensamble
+                </span>
+              )}
+              {task.quantity > 1 && (
+                <span className="inline-block text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                  x{task.quantity}
+                </span>
+              )}
+            </div>
 
             {/* Progreso sub-piezas */}
             {totalSubs > 0 && (

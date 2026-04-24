@@ -3,7 +3,21 @@
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
 import { TimeEngine } from "@/lib/time-engine";
+
+async function requireAuth() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) throw new Error("No autorizado: debes iniciar sesión");
+  return session;
+}
+
+async function requireAdmin() {
+  const session = await requireAuth();
+  if (session.user.role !== "ADMIN") throw new Error("Se requiere rol de Administrador");
+  return session;
+}
 import type * as ExcelJS from "exceljs";
 // ExcelJS se carga dinámicamente en las acciones que lo requieren para evitar pánicos de Turbopack
 const NORM_STAGES: Record<string, string> = {
@@ -89,7 +103,7 @@ export async function updateMachine(id: string, name: string, description?: stri
 // MOTOR DE LANZAMIENTO A PRODUCCIÓN
 // -----------------------------------------------------
 
-export async function launchMachineToProject(machineId: string, projectName: string, startDate: Date) {
+export async function launchMachineToProject(machineId: string, projectName: string, startDate: Date, projectQuantity: number = 1) {
   try {
     const startAt = new Date(startDate);
     startAt.setHours(8, 0, 0, 0); // Ajustar inicio a las 08:00 AM del día elegido
@@ -134,6 +148,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
       data: {
         name: projectName,
         startDate: startAt,
+        quantity: projectQuantity,
         stage: "Planeación y Diseño",
         stages: {
           create: [
@@ -156,11 +171,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
     function getRecursiveHours(pId: string): number {
       const part = machine!.parts.find(p => p.id === pId);
       if (!part) return 0;
-      
+
       const directOpsHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
       const childrenParts = machine!.parts.filter(p => p.parentId === pId);
       const childrenHours = childrenParts.reduce((acc, child) => acc + getRecursiveHours(child.id), 0);
-      
+
       return directOpsHours + childrenHours;
     }
 
@@ -170,10 +185,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
     // Clonación Recursiva Helper
     async function clonePart(partId: string, parentTaskId?: string) {
       // Definir interfaces locales para Tipado Estricto
-      interface CatalogOp { 
-        name: string; 
-        estimatedHours: number; 
-        preferredStage?: string | null; 
+      interface CatalogOp {
+        id: string;
+        name: string;
+        estimatedHours: number;
+        preferredStage?: string | null;
       }
       interface CatalogPartWithOps {
         id: string;
@@ -188,14 +204,21 @@ export async function launchMachineToProject(machineId: string, projectName: str
       const part = machine!.parts.find(p => p.id === partId) as CatalogPartWithOps | undefined;
       if (!part) return;
 
+      // Cantidad total = cantidad en máquina * cantidad de máquinas en el proyecto
+      const totalQuantity = part.quantity * projectQuantity;
+
       // Cálculo de horas para este nodo (Ensambles suman recursivamente, piezas simples usan sus operaciones)
       const isAssembly = parentPartIds.has(part.id);
-      const totalHoursForThisPart = isAssembly ? getRecursiveHours(part.id) : part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
-      
+
+      // El tiempo unitario es la suma de operaciones directas o recursivas para UNA unidad
+      const unitEstimatedHours = isAssembly ? getRecursiveHours(part.id) : part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+
+      // Las horas estimadas totales se escalan por la cantidad total
+      let finalEstimatedHours = (unitEstimatedHours || 8) * totalQuantity;
+
       // Cálculo de Fechas
       const isExternal = part.preferredStage === "Pedido Externo";
       let taskEndDate: Date;
-      let finalEstimatedHours = totalHoursForThisPart || 8;
 
       if (isExternal && (part.deliveryDays || 0) > 0) {
         // Para pedido externo: fecha fin por calendario natural
@@ -210,37 +233,48 @@ export async function launchMachineToProject(machineId: string, projectName: str
       // Crear la Tarea/Ensamble
       const newTaskPart = await prisma.task.create({
         data: {
-          name: part.name + (part.quantity > 1 ? ` (x${part.quantity})` : ""),
+          name: part.name + (totalQuantity > 1 ? ` (x${totalQuantity})` : ""),
           projectId: project.id,
           parentId: parentTaskId,
           isAssembly: isAssembly,
           stage: part.preferredStage || "Pendiente",
-          status: "EN_PROCESO", 
+          status: "EN_PROCESO",
           startDate: projectStartDate,
           endDate: taskEndDate,
           estimatedHours: finalEstimatedHours,
+          unitEstimatedHours: unitEstimatedHours || 8,
+          quantity: totalQuantity,
           deliveryDays: part.deliveryDays || 0,
+          catalogPartId: part.id,
         }
       });
-      
+
       partIdToTaskId.set(part.id, newTaskPart.id);
 
       // Clonar operaciones de esta pieza en cascada
       let opsStartDate = new Date(projectStartDate);
       for (const op of part.operations) {
-        const opsEndDate = engine.addBusinessHours(opsStartDate, op.estimatedHours || 8);
+        // La operación también se escala por la cantidad total
+        const opUnitHours = op.estimatedHours || 8;
+        const opTotalHours = opUnitHours * totalQuantity;
+        const opsEndDate = engine.addBusinessHours(opsStartDate, opTotalHours);
+
         await prisma.task.create({
           data: {
             name: op.name,
             projectId: project.id,
             parentId: newTaskPart.id,
-            isAssembly: false, 
+            isAssembly: false,
             stage: op.preferredStage || part.preferredStage || "Pendiente",
             status: "EN_PROCESO",
             progress: 0,
             startDate: opsStartDate,
             endDate: opsEndDate,
-            estimatedHours: op.estimatedHours || 8,
+            estimatedHours: opTotalHours,
+            unitEstimatedHours: opUnitHours,
+            quantity: totalQuantity,
+            catalogPartId: part.id,
+            catalogOperationId: op.id,
           }
         });
         opsStartDate = opsEndDate;
@@ -297,10 +331,10 @@ export async function importMachineFromExcel(formData: FormData) {
     // Validar cabeceras mínimas obligatorias
     const required = ["nombre", "cantidad", "etapa inicial"];
     const missing = required.filter(h => !headers.includes(h));
-    
+
     if (missing.length > 0) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: "INVALID_FORMAT",
         details: `Faltan las columnas obligatorias: ${missing.join(", ")}`
       };
@@ -308,9 +342,9 @@ export async function importMachineFromExcel(formData: FormData) {
 
     // 2. Crear la Máquina Plantilla
     const machine = await prisma.machineCatalog.create({
-      data: { 
-        name: file.name.replace(".xlsx", ""), 
-        description: `Importado de Excel el ${new Date().toLocaleString()}` 
+      data: {
+        name: file.name.replace(".xlsx", ""),
+        description: `Importado de Excel el ${new Date().toLocaleString()}`
       }
     });
 
@@ -366,8 +400,9 @@ export async function importMachineFromExcel(formData: FormData) {
           data: {
             name: `Fabricar ${r.nombre}${r.cantidad > 1 ? ` (x${r.cantidad})` : ''}`,
             partId: part.id,
-            // Las horas de fabricación se multiplican por la cantidad
-            estimatedHours: Math.max(0.5, r.horas * r.cantidad), 
+            // Guardamos las horas UNITARIAS en el catálogo. 
+            // El motor de lanzamiento las multiplicará por (part.quantity * projectQuantity)
+            estimatedHours: Math.max(0.1, r.horas),
             preferredStage: "Fabricación Taller",
             orderIndex: 0
           }
@@ -382,7 +417,7 @@ export async function importMachineFromExcel(formData: FormData) {
         if (partNameToId.has(parentKey)) {
           const childId = partNameToId.get(r.nombre.toLowerCase());
           const parentId = partNameToId.get(parentKey);
-          
+
           await prisma.catalogPart.update({
             where: { id: childId },
             data: { parentId: parentId }
@@ -397,7 +432,7 @@ export async function importMachineFromExcel(formData: FormData) {
       }
     }
 
-  revalidatePath("/catalog");
+    revalidatePath("/catalog");
     return { success: true, machine };
   } catch (error) {
     console.error("Excel Import Error:", error);
@@ -488,3 +523,42 @@ export async function cloneMachine(machineId: string) {
   }
 }
 
+/** Actualiza el tiempo estándar en el Catálogo basado en el tiempo real de una tarea */
+export async function updateCatalogFromTask(taskId: string) {
+  await requireAdmin();
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: {
+      unitEstimatedHours: true,
+      estimatedHours: true,
+      quantity: true,
+      deliveryDays: true,
+      catalogPartId: true,
+      catalogOperationId: true
+    }
+  });
+
+  if (!task) throw new Error("Tarea no encontrada");
+
+  if (task.catalogOperationId) {
+    // Calcular el tiempo unitario real si el campo unitEstimatedHours es nulo
+    const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
+
+    await prisma.catalogOperation.update({
+      where: { id: task.catalogOperationId },
+      data: { estimatedHours: realUnitHours }
+    });
+  } else if (task.catalogPartId) {
+    // Es una pieza (Pedido Externo sin operaciones)
+    await prisma.catalogPart.update({
+      where: { id: task.catalogPartId },
+      data: { deliveryDays: task.deliveryDays || 0 }
+    });
+  } else {
+    throw new Error("Esta tarea no está vinculada a ningún elemento del catálogo");
+  }
+
+  revalidatePath("/catalog");
+  return { success: true };
+}

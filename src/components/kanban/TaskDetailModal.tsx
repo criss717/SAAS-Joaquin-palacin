@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask } from "@/lib/actions/tasks";
+import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity } from "@/lib/actions/tasks";
+import { updateCatalogFromTask } from "@/lib/actions/catalog";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
-import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2 } from "lucide-react";
+import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
-import { useCallback, useRef } from "react";
 
 type Stage = { id: string; name: string; color: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -47,17 +47,83 @@ const normalize = (s: string) =>
 
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
   const [isPending, startTransition] = useTransition();
+  const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
   const [localName, setLocalName] = useState(task?.name ?? "");
   const [selectedStage, setSelectedStage] = useState(task?.stage ?? "");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>(task?.status ?? "EN_PROCESO");
   const [localProgress, setLocalProgress] = useState(task?.progress ?? 0);
   const [startDate, setStartDate] = useState(() => toDateTimeLocalValue(task?.startDate ?? ""));
   const [endDate, setEndDate] = useState(() => toDateTimeLocalValue(task?.endDate ?? ""));
-  const [estimatedHours, setEstimatedHours] = useState<number>(task?.estimatedHours ?? 8);
+  const [estimatedHours, setEstimatedHours] = useState<number>(task?.estimatedHours ?? 1);
   const [isCalculating, setIsCalculating] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<TaskAssignee[]>(task?.assignees ?? []);
   const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors.map(p => p.predecessor.id) ?? []);
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
+  const [localQuantity, setLocalQuantity] = useState(task?.quantity ?? 1);
+  const [unitHours, setUnitHours] = useState(() => {
+    if (task?.unitEstimatedHours !== null && task?.unitEstimatedHours !== undefined) return task.unitEstimatedHours;
+    if (task?.estimatedHours && task?.quantity) return task.estimatedHours / task.quantity;
+    return 8;
+  });
+
+  const hasHoursChanged = task ? Math.abs(unitHours - (task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1)))) > 0.05 : false;
+
+  // Detección de cambios simplificada para evitar falsos positivos
+  const hasChanges = () => {
+    if (!task || isSyncingCatalog) return false;
+
+    // Solo comparamos campos críticos que el usuario suele tocar
+    return (
+      localName !== task.name ||
+      selectedStage !== task.stage ||
+      selectedStatus !== task.status ||
+      localProgress !== task.progress ||
+      Math.abs(unitHours - (task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1)))) > 0.05 ||
+      localQuantity !== task.quantity ||
+      parentId !== task.parentId
+    );
+  };
+
+  const handleCloseAttempt = async () => {
+    if (isClosingRef.current) return;
+
+    // Si no hay cambios, cerramos directamente
+    if (!hasChanges()) {
+      onClose();
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: '¿Salir sin guardar?',
+      text: "Tienes cambios sin guardar que se perderán.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, salir',
+      cancelButtonText: 'Seguir editando',
+      confirmButtonColor: '#ef4444',
+      heightAuto: false
+    });
+
+    if (result.isConfirmed) {
+      isClosingRef.current = true;
+      onClose();
+      // Resetear después de que el diálogo se haya desmontado
+      setTimeout(() => {
+        isClosingRef.current = false;
+      }, 500);
+    }
+  };
+
+  // Efecto para asegurar que unitHours siempre sea coherente con estimatedHours / quantity
+  // Especialmente útil para tareas antiguas que cargan con null
+  useEffect(() => {
+    if (estimatedHours && localQuantity) {
+      const calculatedUnit = estimatedHours / localQuantity;
+      if (calculatedUnit !== unitHours) {
+        setUnitHours(calculatedUnit);
+      }
+    }
+  }, [estimatedHours, localQuantity, unitHours]);
 
   const handlePredecessorChange = async (newIds: string[]) => {
     setPredecessorIds(newIds);
@@ -85,6 +151,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const calcHoursTimer = useRef<NodeJS.Timeout | null>(null);
   const calcEndTimer = useRef<NodeJS.Timeout | null>(null);
   const [error, setError] = useState("");
+  const isClosingRef = useRef(false);
 
   const handleCalculateEndDate = useCallback(async (startVal: string, hoursVal: number) => {
     if (!startVal || !hoursVal || hoursVal <= 0) return;
@@ -109,13 +176,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
       const hours = await calculateHoursAction(start, end);
       setEstimatedHours(hours);
+      setUnitHours(hours / (localQuantity || 1));
       setError("");
     } catch {
       // Silencioso
     } finally {
       setIsCalculating(false);
     }
-  }, []);
+  }, [localQuantity]);
 
   const onStartDateChange = (val: string) => {
     setStartDate(val);
@@ -131,6 +199,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
   const onHoursChange = (val: number) => {
     setEstimatedHours(val);
+    // Recalcular unitHours para que el label (unit x quantity) se actualice
+    setUnitHours(val / (localQuantity || 1));
     if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
     calcEndTimer.current = setTimeout(() => handleCalculateEndDate(startDate, val), 500);
   };
@@ -178,83 +248,147 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     });
   };
 
-  const handleSave = () => {
-    startTransition(async () => {
-      const updates: Promise<unknown>[] = [];
+  const handleSave = async () => {
+    return new Promise<TaskWithRelations[]>((resolve) => {
+      startTransition(async () => {
+        const updates: Promise<unknown>[] = [];
 
-      if (localName !== task.name) {
-        updates.push(updateTaskName(task.id, localName));
-      }
+        if (localName !== task.name) {
+          updates.push(updateTaskName(task.id, localName));
+        }
 
-      if (selectedStage !== task.stage) {
-        updates.push(updateTaskStage(task.id, selectedStage));
-      }
+        if (selectedStage !== task.stage) {
+          updates.push(updateTaskStage(task.id, selectedStage));
+        }
 
-      if (selectedStatus !== task.status) {
-        updates.push(updateTaskStatus(task.id, selectedStatus));
-      }
+        if (selectedStatus !== task.status) {
+          updates.push(updateTaskStatus(task.id, selectedStatus));
+        }
 
-      if (localProgress !== task.progress) {
-        updates.push(updateTaskProgress(task.id, localProgress));
-      }
+        if (localProgress !== task.progress) {
+          updates.push(updateTaskProgress(task.id, localProgress));
+        }
 
-      let cascadedUpdates: TaskWithRelations[] = []
-      if (startDate && endDate) {
-        const origStart = toDateTimeLocalValue(task.startDate);
-        const origEnd = toDateTimeLocalValue(task.endDate);
-        if (startDate !== origStart || endDate !== origEnd || estimatedHours !== task.estimatedHours) {
-          // Usamos cascade: actualiza la tarea y propaga a sucesoras
-          const result = await updateTaskDatesAndCascade(
+        let cascadedUpdates: TaskWithRelations[] = []
+        if (startDate && endDate) {
+          const origStart = toDateTimeLocalValue(task.startDate);
+          const origEnd = toDateTimeLocalValue(task.endDate);
+          if (startDate !== origStart || endDate !== origEnd || estimatedHours !== task.estimatedHours) {
+            // Usamos cascade: actualiza la tarea y propaga a sucesoras
+            const result = await updateTaskDatesAndCascade(
+              task.id,
+              fromDateTimeInput(startDate),
+              fromDateTimeInput(endDate),
+              estimatedHours,
+              unitHours
+            );
+            cascadedUpdates = result.updated;
+          }
+        }
+
+        const origIds = task.assignees.map((a: TaskAssignee) => a.id).sort().join(",");
+        const newIds = selectedAssignees.map(a => a.id).sort().join(",");
+        if (origIds !== newIds) {
+          updates.push(updateTaskAssignees(task.id, selectedAssignees.map(a => a.id)));
+        }
+
+        const origPredIds = task.predecessors.map(p => p.predecessor.id).sort().join(",");
+        const newPredIds = [...predecessorIds].sort().join(",");
+        if (origPredIds !== newPredIds) {
+          updates.push(updateTaskPredecessors(task.id, predecessorIds));
+        }
+
+        if (parentId !== task.parentId) {
+          updates.push(updateTaskParent(task.id, parentId));
+        }
+
+        if (localQuantity !== task.quantity) {
+          // updateTaskQuantity ya maneja el cascade internamente
+          const res = await updateTaskQuantity(task.id, localQuantity);
+          cascadedUpdates = [...cascadedUpdates, ...res.updated];
+        }
+
+        // ASEGURAR QUE EL TIEMPO UNITARIO SE GUARDE SIEMPRE (especialmente para tareas antiguas con null)
+        if (unitHours !== task.unitEstimatedHours) {
+          // Si no hay una acción específica, podemos usar updateTaskDatesAndCascade con las fechas actuales
+          // para forzar la actualización del campo unitEstimatedHours
+          const res = await updateTaskDatesAndCascade(
             task.id,
             fromDateTimeInput(startDate),
             fromDateTimeInput(endDate),
-            estimatedHours
+            estimatedHours,
+            unitHours
           );
-          cascadedUpdates = result.updated;
+          cascadedUpdates = [...cascadedUpdates, ...res.updated];
         }
-      }
 
-      const origIds = task.assignees.map((a: TaskAssignee) => a.id).sort().join(",");
-      const newIds = selectedAssignees.map(a => a.id).sort().join(",");
-      if (origIds !== newIds) {
-        updates.push(updateTaskAssignees(task.id, selectedAssignees.map(a => a.id)));
-      }
+        await Promise.all(updates);
 
-      const origPredIds = task.predecessors.map(p => p.predecessor.id).sort().join(",");
-      const newPredIds = [...predecessorIds].sort().join(",");
-      if (origPredIds !== newPredIds) {
-        updates.push(updateTaskPredecessors(task.id, predecessorIds));
-      }
+        const updatedTask = {
+          ...task,
+          name: localName,
+          stage: selectedStage,
+          status: selectedStatus,
+          progress: localProgress,
+          estimatedHours: estimatedHours,
+          startDate: startDate ? fromDateTimeInput(startDate) : task.startDate,
+          endDate: endDate ? fromDateTimeInput(endDate) : task.endDate,
+          assignees: selectedAssignees,
+          parentId: parentId,
+          quantity: localQuantity,
+          unitEstimatedHours: unitHours,
+          predecessors: predecessorIds.map(id => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
+        };
 
-      if (parentId !== task.parentId) {
-        updates.push(updateTaskParent(task.id, parentId));
-      }
+        // Primero notificar la tarea principal con todos los datos locales actualizados
+        onTaskUpdated(updatedTask);
 
-      await Promise.all(updates);
+        // Luego notificar cada tarea cascadeada (sucesoras que se movieron)
+        for (const cascaded of cascadedUpdates.slice(1)) {
+          onTaskUpdated(cascaded);
+        }
 
-      // Primero notificar la tarea principal con todos los datos locales actualizados
-      onTaskUpdated({
-        ...task,
-        name: localName,
-        stage: selectedStage,
-        status: selectedStatus,
-        progress: localProgress,
-        estimatedHours: estimatedHours,
-        startDate: startDate ? fromDateTimeInput(startDate) : task.startDate,
-        endDate: endDate ? fromDateTimeInput(endDate) : task.endDate,
-        assignees: selectedAssignees,
-        parentId: parentId,
-        predecessors: predecessorIds.map(id => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
+        resolve([updatedTask, ...cascadedUpdates.slice(1)]);
       });
-
-      // Luego notificar cada tarea cascadeada (sucesoras que se movieron)
-      // Omitimos la primera porque ya la notificamos arriba con los datos de la UI
-      for (const cascaded of cascadedUpdates.slice(1)) {
-        onTaskUpdated(cascaded);
-      }
-
-      onClose();
     });
+  };
+
+  const handleSyncCatalog = async () => {
+    if (!task) return;
+
+    const result = await Swal.fire({
+      title: '¿Guardar como estándar?',
+      text: "Este tiempo se guardará en el catálogo maestro para futuras producciones de esta pieza.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, sincronizar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#3b82f6',
+    });
+
+    if (result.isConfirmed) {
+      setIsSyncingCatalog(true);
+      try {
+        // 1. AUTOSAVE: Asegurar que todo esté en DB
+        await handleSave();
+
+        // 2. ACTUALIZAR CATÁLOGO
+        await updateCatalogFromTask(task.id);
+
+        Swal.fire({
+          title: '¡Maestro Actualizado!',
+          text: 'Se han guardado los cambios y el tiempo estándar en el catálogo.',
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al sincronizar catálogo';
+        Swal.fire('Error', message, 'error');
+      } finally {
+        setIsSyncingCatalog(false);
+      }
+    }
   };
 
   const handleDelete = async () => {
@@ -311,7 +445,12 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     });
 
   return (
-    <Dialog open={!!task} onOpenChange={onClose}>
+    <Dialog open={!!task} onOpenChange={(open) => {
+      // Si intentan cerrar (open=false) y hay una tarea activa, disparamos nuestra lógica
+      if (!open && task) {
+        handleCloseAttempt();
+      }
+    }}>
       <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">
@@ -414,24 +553,43 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Estimación y Fechas */}
-            <div className="flex gap-3">
-              <div className="space-y-1.5 w-[100px] shrink-0">
+            {/* Estimación, Cantidad y Fechas */}
+            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                  <Hash size={12} className="text-blue-500" /> Cantidad
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={localQuantity}
+                  onChange={e => {
+                    const q = Math.max(1, Number(e.target.value));
+                    setLocalQuantity(q);
+                    setEstimatedHours(q * unitHours);
+                    // No recalculamos fin aquí, se hará al guardar o si tocan fechas
+                  }}
+                  className="text-sm h-9 rounded-xl border-gray-200"
+                />
+              </div>
+
+              <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                  Horas Est.
+                  Horas Totales
                   <button type="button" onClick={() => handleCalculateHours(startDate, endDate)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
                     {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
                   </button>
                 </Label>
                 <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
+                <p className="text-[9px] text-gray-400 mt-1">({unitHours}h x {localQuantity} ud)</p>
               </div>
 
-              <div className="space-y-1.5 flex-1">
+              <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
                 <Input type="datetime-local" value={startDate} onChange={e => onStartDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
               </div>
 
-              <div className="space-y-1.5 flex-1">
+              <div className="space-y-1.5">
                 <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
                   <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
                   <button type="button" onClick={() => handleCalculateEndDate(startDate, estimatedHours)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
@@ -614,22 +772,49 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
         <Separator className="bg-gray-100" />
 
-        <div className="flex gap-2 justify-between">
-          <Button
-            variant="ghost"
-            onClick={handleDelete}
-            disabled={isPending}
-            className="rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 gap-2 cursor-pointer"
-          >
-            <Trash2 size={16} />
-            Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
-          </Button>
+        <div className="flex items-center justify-between gap-3 p-4 bg-gray-50/50 rounded-xl">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              onClick={handleDelete}
+              disabled={isPending}
+              className="rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 gap-2 cursor-pointer h-9 text-xs"
+            >
+              <Trash2 size={16} />
+              Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
+            </Button>
 
+            {(task.catalogPartId || task.catalogOperationId) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSyncCatalog}
+                disabled={isSyncingCatalog}
+                title="Actualizar este tiempo en el catálogo maestro para futuros despieces"
+                className="text-xs h-9 gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 ml-2 rounded-xl transition-all"
+              >
+                {isSyncingCatalog ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} className={hasHoursChanged ? "animate-pulse" : ""} />
+                )}
+                Horas Pieza
+              </Button>
+            )}
+          </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl cursor-pointer">
+            <Button variant="outline" onClick={handleCloseAttempt} disabled={isPending} className="rounded-xl cursor-pointer">
               Cerrar sin guardar
             </Button>
-            <Button onClick={handleSave} disabled={isPending} className="rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 font-bold px-6 cursor-pointer">
+            <Button
+              onClick={async () => {
+                await handleSave();
+                onClose();
+              }}
+              disabled={isPending}
+              className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 cursor-pointer"
+            >
               {isPending ? "Guardando..." : "Guardar Cambios"}
             </Button>
           </div>

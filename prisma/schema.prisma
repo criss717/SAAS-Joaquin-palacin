@@ -6,20 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
-enum Role {
-  ADMIN
-  USER
-}
-
-enum TaskStatus {
-  APROBADO
-  EN_PROCESO
-  CAMBIOS_SOLICITADOS
-  HECHO
-  CANCELADO
-}
-
 model User {
   id              String         @id @default(uuid())
   name            String
@@ -32,56 +18,53 @@ model User {
 model Project {
   id        String   @id @default(uuid())
   name      String
-  stage     String   @default("Planeación y Diseño") // estado global del proyecto
-  startDate DateTime @default(now()) // Fecha de inicio prevista para el trabajo
+  stage     String   @default("Planeación y Diseño")
   createdAt DateTime @default(now())
+  startDate DateTime @default(now())
+  quantity  Int      @default(1)
+  stages    Stage[]
   tasks     Task[]
-  stages    Stage[]  // columnas Kanban del proyecto
 }
 
 model Task {
-  id           String   @id @default(uuid())
-  name         String
-  projectId    String
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  parentId     String?
-  parent       Task?    @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subTasks     Task[]   @relation("SubTasks")
-  
-  isAssembly   Boolean        @default(false)
-  stage        String         @default("Pendiente")
-  status       TaskStatus     @default(EN_PROCESO)
-  progress     Int            @default(0)
-  
-  assignees    TaskAssignee[]  // Múltiples operarios asignados
-  
-  estimatedHours Float?         @default(8) // Evolución a ERP por horas
-  startDate    DateTime
-  endDate      DateTime
-  
-  predecessors TaskDependency[] @relation("SuccessorTasks")
-  successors   TaskDependency[] @relation("PredecessorTasks")
-
-  deliveryDays   Int?     @default(0)
-  orderIndex     Int      @default(0)
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String           @id @default(uuid())
+  name               String
+  projectId          String
+  parentId           String?
+  isAssembly         Boolean          @default(false)
+  stage              String           @default("Pendiente")
+  startDate          DateTime
+  endDate            DateTime
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  status             TaskStatus       @default(EN_PROCESO)
+  progress           Int              @default(0)
+  estimatedHours     Float?           @default(8)
+  orderIndex         Int              @default(0)
+  deliveryDays       Int?             @default(0)
+  quantity           Int              @default(1)
+  unitEstimatedHours Float?           @default(8)
+  catalogOperationId String?
+  catalogPartId      String?
+  parent             Task?            @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subTasks           Task[]           @relation("SubTasks")
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignees          TaskAssignee[]
+  successors         TaskDependency[] @relation("PredecessorTasks")
+  predecessors       TaskDependency[] @relation("SuccessorTasks")
 }
 
 model TaskDependency {
   id            String @id @default(uuid())
   predecessorId String
   successorId   String
-  
   predecessor   Task   @relation("PredecessorTasks", fields: [predecessorId], references: [id], onDelete: Cascade)
   successor     Task   @relation("SuccessorTasks", fields: [successorId], references: [id], onDelete: Cascade)
 
   @@unique([predecessorId, successorId])
 }
 
-/** Tabla de asignación múltiple: tarea ↔ operarios */
+/// * Tabla de asignación múltiple: tarea ↔ operarios
 model TaskAssignee {
   taskId String
   userId String
@@ -91,99 +74,94 @@ model TaskAssignee {
   @@id([taskId, userId])
 }
 
-/** Etapas (columnas) dinámicas del tablero Kanban por proyecto */
+/// * Etapas (columnas) dinámicas del tablero Kanban por proyecto
 model Stage {
   id        String  @id @default(uuid())
   name      String
-  color     String  @default("#94a3b8") // color hex para el borde superior de la columna
-  order     Int     @default(0)          // posición en el tablero
+  color     String  @default("#94a3b8")
+  order     Int     @default(0)
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, name])
 }
 
-// ----------------------------------------------------------------------
-// MÓDULO DE CATÁLOGO / INGENIERÍA (BOM)
-// ----------------------------------------------------------------------
-
-/** 
- * Máquina o Producto Teórico (Ej: Decanter P6)
- * Actúa como la base o plantilla para crear un Proyecto.
- */
+/// * 
+///  * Máquina o Producto Teórico (Ej: Decanter P6)
+///  * Actúa como la base o plantilla para crear un Proyecto.
 model MachineCatalog {
-  id          String   @id @default(uuid())
-  name        String   
+  id          String        @id @default(uuid())
+  name        String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
   parts       CatalogPart[]
 }
 
-/** 
- * Pieza o Ensamble del Catálogo (Ej: Rotor, Sinfín, Eje, Chasis)
- * Al lanzarse a producción, se convierten en Task con isAssembly = true.
- */
+/// * 
+///  * Pieza o Ensamble del Catálogo (Ej: Rotor, Sinfín, Eje, Chasis)
+///  * Al lanzarse a producción, se convierten en Task con isAssembly = true.
 model CatalogPart {
-  id          String   @id @default(uuid())
-  name        String   
-  machineId   String
-  machine     MachineCatalog @relation(fields: [machineId], references: [id], onDelete: Cascade)
-  
-  parentId    String?
-  parent      CatalogPart?   @relation("CatalogSubParts", fields: [parentId], references: [id], onDelete: Cascade)
-  subParts    CatalogPart[]  @relation("CatalogSubParts")
-  
-  quantity    Int            @default(1) 
-  preferredStage String?  // Etapa inicial deseada (ej: "Pedido Externo")
-  
-  deliveryDays   Int?           @default(0)
+  id             String             @id @default(uuid())
+  name           String
+  machineId      String
+  parentId       String?
+  quantity       Int                @default(1)
+  preferredStage String?
+  deliveryDays   Int?               @default(0)
   operations     CatalogOperation[]
+  machine        MachineCatalog     @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  parent         CatalogPart?       @relation("CatalogSubParts", fields: [parentId], references: [id], onDelete: Cascade)
+  subParts       CatalogPart[]      @relation("CatalogSubParts")
 }
 
-/** 
- * Tarea operativa estándar (Ej: Soldar Virola, Torno)
- * Al lanzarse a producción, se convierten en Task con isAssembly = false.
- */
+/// * 
+///  * Tarea operativa estándar (Ej: Soldar Virola, Torno)
+///  * Al lanzarse a producción, se convierten en Task con isAssembly = false.
 model CatalogOperation {
-  id             String   @id @default(uuid())
-  name           String   
+  id             String      @id @default(uuid())
+  name           String
   partId         String
+  estimatedHours Float       @default(8)
+  orderIndex     Int         @default(0)
+  preferredStage String?
   part           CatalogPart @relation(fields: [partId], references: [id], onDelete: Cascade)
-  
-  estimatedHours Float    @default(8)   // Evolución a ERP para medir con precisión
-  preferredStage String?  // Etapa inicial deseada para esta operación (ej: "Pedido Externo")
-  orderIndex     Int      @default(0)
 }
 
-// ----------------------------------------------------------------------
-// MÓDULO DE RECURSOS HUMANOS / CONTROL DE HORARIOS DE TRABAJO
-// ----------------------------------------------------------------------
-
-/**
- * Temporadas de horario de planta (ej. Invierno vs Verano).
- * Permite que el Gantt sepa cuántas horas tiene un día.
- */
+/// *
+///  * Temporadas de horario de planta (ej. Invierno vs Verano).
+///  * Permite que el Gantt sepa cuántas horas tiene un día.
 model WorkSchedule {
   id          String   @id @default(uuid())
-  name        String   // Ej: "Horario Verano 2026"
-  validFrom   DateTime // Fecha de inicio de validez
-  validUntil  DateTime // Fecha de fin de validez
-  workingDays String   @default("[1,2,3,4,5]") // JSON array e.g. 1=Lun
-  shifts      String   @default("[{\"start\": \"08:00\", \"end\": \"14:00\"}, {\"start\": \"16:00\", \"end\": \"18:00\"}]") // Json 
+  name        String
+  validFrom   DateTime
+  validUntil  DateTime
+  workingDays String   @default("[1,2,3,4,5]")
+  shifts      String   @default("[{\"start\": \"08:00\", \"end\": \"14:00\"}, {\"start\": \"16:00\", \"end\": \"18:00\"}]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-/**
- * Días festivos (Ferias, Navidades) de un año. 
- * El calculador de Gantt los saltará.
- */
+/// *
+///  * Días festivos (Ferias, Navidades) de un año. 
+///  * El calculador de Gantt los saltará.
 model Holiday {
-  id          String   @id @default(uuid())
-  name        String   // Ej: "Feria de Abril"
-  startDate   DateTime // Inicio del festivo
-  endDate     DateTime? // Fin del festivo (opcional, si es de un solo día)
-  createdAt   DateTime @default(now())
+  id        String    @id @default(uuid())
+  name      String
+  createdAt DateTime  @default(now())
+  endDate   DateTime?
+  startDate DateTime
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum TaskStatus {
+  APROBADO
+  EN_PROCESO
+  CAMBIOS_SOLICITADOS
+  HECHO
+  CANCELADO
 }

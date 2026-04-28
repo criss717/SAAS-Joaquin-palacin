@@ -16,6 +16,8 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
     depends_on:
       - db
+    ports:
+      - "3000:3000"
 
 volumes:
   postgres_data:

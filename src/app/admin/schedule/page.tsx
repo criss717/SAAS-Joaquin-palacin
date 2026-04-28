@@ -2,6 +2,8 @@ import { getWorkSchedules, getHolidays } from "@/lib/actions/schedule";
 import { ScheduleClient } from "./ScheduleClient";
 import { Calendar, Clock, Settings2 } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminSchedulePage() {
   const [schedules, holidays] = await Promise.all([
     getWorkSchedules(),

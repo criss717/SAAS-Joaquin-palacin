@@ -5,6 +5,7 @@ import { Role } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { sendWelcomeEmail } from "@/lib/email";
+import { randomBytes } from "node:crypto";
 
 export type UserWithoutPassword = {
   id: string;
@@ -35,7 +36,7 @@ export async function createUser(data: { name: string; email: string; role: Role
     }
 
     // 2. Generate random temporary password
-    const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!";
+    const tempPassword = randomBytes(8).toString('hex') + "Aa1!"
     const passwordHash = await bcrypt.hash(tempPassword, 10);
 
     // 3. Create user
@@ -66,7 +67,7 @@ export async function createUser(data: { name: string; email: string; role: Role
 
     revalidatePath("/admin/users");
     revalidatePath("/gantt"); // Revalidate where users are shown
-    
+
     return {
       success: true,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
@@ -84,7 +85,7 @@ export async function updateUserRole(id: string, role: Role) {
       where: { id },
       data: { role },
     });
-    
+
     revalidatePath("/admin/users");
     revalidatePath("/gantt");
     return { success: true };
@@ -99,7 +100,7 @@ export async function deleteUser(id: string) {
     await prisma.user.delete({
       where: { id },
     });
-    
+
     revalidatePath("/admin/users");
     revalidatePath("/gantt");
     return { success: true };

@@ -76,19 +76,25 @@ export const KanbanColumn = ({
                 className={`flex-1 overflow-y-auto kanban-scroll px-3 py-3 flex flex-col gap-2 min-h-[200px] transition-colors rounded-b-xl ${taskSnapshot.isDraggingOver ? "bg-blue-50/60" : ""
                   }`}
               >
-                {visibleTasks.map((task, idx) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    index={idx}
-                    isExpanded={expandedCards.has(task.id)}
-                    columnColor={column.color}
-                    projectSubTasks={allTasks.filter((t) => t.parentId === task.id)}
-                    onToggleExpand={onToggleExpand}
-                    onSelectTask={onSelectTask}
-                    onDeleteTask={onDeleteTask}
-                  />
-                ))}
+                {visibleTasks.map((task, idx) => {
+                  const predecessorsIds = task.predecessors.map((p) => p.predecessor.id);
+                  const subTasksFromPreds = allTasks.filter((t) => predecessorsIds.includes(t.id));
+
+                  return (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      index={idx}
+                      isExpanded={expandedCards.has(task.id)}
+                      columnColor={column.color}
+                      projectSubTasks={subTasksFromPreds}
+                      allTasks={allTasks}
+                      onToggleExpand={onToggleExpand}
+                      onSelectTask={onSelectTask}
+                      onDeleteTask={onDeleteTask}
+                    />
+                  );
+                })}
 
                 {taskProvided.placeholder}
 

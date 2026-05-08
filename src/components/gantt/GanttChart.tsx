@@ -124,7 +124,7 @@ function toGanttTasks(tasks: TaskWithRelations[], groupBy: GroupByMode): Task[] 
 
 export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Month);
-  const [zoomLevel, setZoomLevel] = useState(0.5);
+  const [zoomLevel, setZoomLevel] = useState(0.8);
   const [groupBy, setGroupBy] = useState<GroupByMode>("none");
 
   const ganttTasks = toGanttTasks(tasks, groupBy);

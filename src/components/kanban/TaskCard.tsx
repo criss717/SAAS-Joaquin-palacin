@@ -12,6 +12,7 @@ interface TaskCardProps {
   isExpanded: boolean;
   columnColor: string;
   projectSubTasks: TaskWithRelations[];
+  allTasks: TaskWithRelations[]; // Añadimos allTasks para el 2do nivel
   onToggleExpand: (id: string, e: React.MouseEvent) => void;
   onSelectTask: (task: TaskWithRelations) => void;
   onDeleteTask: (taskId: string) => void;
@@ -23,11 +24,27 @@ export const TaskCard = memo(({
   isExpanded,
   columnColor,
   projectSubTasks,
+  allTasks,
   onToggleExpand,
   onSelectTask,
   onDeleteTask,
 }: TaskCardProps) => {
   const totalSubs = projectSubTasks.length;
+  
+  // Cálculo de Progreso Real basado en Horas
+  const subTasksHours = projectSubTasks.reduce((acc, s) => acc + (s.estimatedHours || 0), 0);
+  const subTasksDoneHours = projectSubTasks.reduce((acc, s) => acc + (s.status === "HECHO" ? (s.estimatedHours || 0) : 0), 0);
+  
+  const selfHours = task.estimatedHours || 0;
+  const selfDoneHours = (task.progress / 100) * selfHours;
+  
+  const totalGroupHours = subTasksHours + selfHours;
+  const totalGroupDoneHours = subTasksDoneHours + selfDoneHours;
+  
+  const realProgress = totalGroupHours > 0 
+    ? Math.round((totalGroupDoneHours / totalGroupHours) * 100) 
+    : task.progress;
+
   const completedSubs = projectSubTasks.filter(s => s.status === "HECHO").length;
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
@@ -125,41 +142,62 @@ export const TaskCard = memo(({
                   />
                 </div>
                 <ul className="mt-2 space-y-1">
-                  {projectSubTasks.slice(0, isExpanded ? undefined : 2).map(sub => (
-                    <li
-                      key={sub.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectTask(sub);
-                      }}
-                      className="flex items-center justify-between gap-1.5 text-[11px] text-gray-600 p-1.5 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors group/sub"
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-gray-300"}`} />
-                        <span className="truncate group-hover/sub:text-blue-600 transition-colors font-medium">{sub.name}</span>
-                      </div>
-                      {/* Asignados miniatura de la sub-tarea */}
-                      {sub.assignees.length > 0 && (
-                        <div className="flex gap-[1.1px] shrink-0 ml-1.5">
-                          {sub.assignees.slice(0, 3).map(a => (
-                            <div
-                              key={a.id}
-                              title={a.name}
-                              className="w-[16px] h-[16px] rounded-full ring-1 ring-white flex items-center justify-center text-white font-bold text-[8px] shadow-sm"
-                              style={{ backgroundColor: columnColor }}
-                            >
-                              {a.name.charAt(0)}
-                            </div>
-                          ))}
-                          {sub.assignees.length > 3 && (
-                            <div className="w-[16px] h-[16px] rounded-full ring-1 ring-white bg-gray-200 flex items-center justify-center text-gray-600 text-[8px] font-bold shadow-sm">
-                              +{sub.assignees.length - 3}
+                  {projectSubTasks.slice(0, isExpanded ? undefined : 2).map(sub => {
+                    // Buscar sub-dependencias (2do nivel)
+                    const subSubIds = sub.predecessors.map(p => p.predecessor.id);
+                    const subSubTasks = allTasks.filter(t => subSubIds.includes(t.id));
+
+                    return (
+                      <div key={sub.id} className="flex flex-col">
+                        <li
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectTask(sub);
+                          }}
+                          className="flex items-center justify-between gap-1.5 text-[11px] text-gray-600 p-1.5 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors group/sub"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-gray-300"}`} />
+                            <span className="truncate group-hover/sub:text-blue-600 transition-colors font-medium">
+                              {sub.isAssembly && <Package size={10} className="inline mr-1 text-purple-400" />}
+                              {sub.name}
+                            </span>
+                          </div>
+                          {sub.assignees.length > 0 && (
+                            <div className="flex gap-[1.1px] shrink-0 ml-1.5">
+                              {sub.assignees.slice(0, 3).map(a => (
+                                <div
+                                  key={a.id}
+                                  title={a.name}
+                                  className="w-[16px] h-[16px] rounded-full ring-1 ring-white flex items-center justify-center text-white font-bold text-[8px] shadow-sm"
+                                  style={{ backgroundColor: columnColor }}
+                                >
+                                  {a.name.charAt(0)}
+                                </div>
+                              ))}
                             </div>
                           )}
-                        </div>
-                      )}
-                    </li>
-                  ))}
+                        </li>
+                        
+                        {/* 2do Nivel de Anidación */}
+                        {isExpanded && subSubTasks.length > 0 && (
+                          <div className="ml-4 border-l-2 border-gray-100 pl-2 mt-0.5 space-y-0.5 mb-1">
+                            {subSubTasks.slice(0, 3).map(ss => (
+                              <div 
+                                key={ss.id} 
+                                className="flex items-center gap-1.5 text-[9px] text-gray-400 hover:text-blue-500 transition-colors cursor-pointer"
+                                onClick={(e) => { e.stopPropagation(); onSelectTask(ss); }}
+                              >
+                                <div className={`w-1 h-1 rounded-full ${ss.status === "HECHO" ? "bg-green-400" : "bg-gray-200"}`} />
+                                <span className="truncate max-w-[150px]">{ss.name}</span>
+                              </div>
+                            ))}
+                            {subSubTasks.length > 3 && <span className="text-[8px] text-gray-300 ml-2">...</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {!isExpanded && totalSubs > 2 && (
                     <li 
                       className="text-[10px] text-gray-400 font-medium text-center pt-1 pb-0.5 cursor-pointer hover:text-gray-600 transition-colors"
@@ -176,13 +214,13 @@ export const TaskCard = memo(({
             <div className="mb-2.5">
               <div className="flex justify-between text-[10px] text-gray-400 mb-1">
                 <span className="flex items-center gap-0.5"><Percent size={10} /> Progreso</span>
-                <span className="font-bold text-gray-600">{task.progress}%</span>
+                <span className="font-bold text-gray-600">{realProgress}%</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
                 <div
                   className={`h-full transition-all duration-500 ${task.status === "HECHO" ? "bg-green-500" : task.status === "CANCELADO" ? "bg-gray-400" : "bg-blue-600"
                     }`}
-                  style={{ width: `${task.progress}%` }}
+                  style={{ width: `${realProgress}%` }}
                 />
               </div>
             </div>

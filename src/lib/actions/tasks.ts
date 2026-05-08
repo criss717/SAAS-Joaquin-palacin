@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/authOptions"
 import { TaskStatus } from "@prisma/client"
+import { addExternalDays } from "@/lib/external-calendar"
 
 export type TaskAssignee = { id: string; name: string }
 
@@ -325,9 +326,12 @@ export async function updateTaskDatesAndCascade(
     const currentStart = new Date(currentTask.startDate)
     if (Math.abs(newStart.getTime() - currentStart.getTime()) < 60_000) continue
 
-    // Calcular nueva fecha de fin respetando horas estimadas
+    // Calcular nueva fecha de fin respetando horas estimadas o delivery days
     const hours = currentTask.estimatedHours ?? 8
-    const newEnd = engine.addBusinessHours(new Date(newStart), hours)
+    const isExternal = (currentTask.deliveryDays || 0) > 0
+    const newEnd = isExternal
+      ? addExternalDays(new Date(newStart), currentTask.deliveryDays!)
+      : engine.addBusinessHours(new Date(newStart), hours)
 
     // Actualizar en BD
     const updatedRaw = await prisma.task.update({
@@ -412,7 +416,44 @@ export async function updateTaskPredecessors(taskId: string, predecessorIds: str
 /** Actualiza la tarea padre (ensamble al que pertenece) */
 export async function updateTaskParent(taskId: string, parentId: string | null) {
   await requireAuth()
+
+  // 1. Obtener el padre anterior para limpiar la dependencia si existía
+  const oldTask = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { parentId: true }
+  })
+
+  // 2. Actualizar el parentId
   await prisma.task.update({ where: { id: taskId }, data: { parentId } })
+
+  // 3. Sincronizar Dependencia: El PADRE depende del HIJO ( taskId )
+  // Si antes tenía padre, borramos esa relación de dependencia específica
+  if (oldTask?.parentId) {
+    await prisma.taskDependency.deleteMany({
+      where: {
+        successorId: oldTask.parentId,
+        predecessorId: taskId
+      }
+    })
+  }
+
+  // Si ahora tiene nuevo padre, creamos la dependencia
+  if (parentId) {
+    await prisma.taskDependency.upsert({
+      where: {
+        predecessorId_successorId: {
+          predecessorId: taskId,
+          successorId: parentId
+        }
+      },
+      create: {
+        predecessorId: taskId,
+        successorId: parentId
+      },
+      update: {} // No hay nada que actualizar si ya existe
+    })
+  }
+
   revalidatePath("/gantt")
 }
 
@@ -444,14 +485,18 @@ export async function createTask(data: {
       predecessors: predecessorIds?.length
         ? { create: predecessorIds.map(id => ({ predecessorId: id })) }
         : undefined,
-    },
-    include: {
-      assignees: { include: { user: { select: { id: true, name: true } } } },
-      subTasks: { select: { id: true, name: true, stage: true, status: true } },
-      predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
-      successors: { include: { successor: { select: { id: true, name: true } } } },
     }
   })
+
+  // Si tiene padre, vinculamos la dependencia: el PADRE depende de esta nueva tarea (HIJO)
+  if (data.parentId) {
+    await prisma.taskDependency.create({
+      data: {
+        predecessorId: task.id,
+        successorId: data.parentId
+      }
+    })
+  }
 
   // Asignar el último orden disponible en esa etapa (count - 1 porque el create ya contó la nueva)
   const count = await prisma.task.count({

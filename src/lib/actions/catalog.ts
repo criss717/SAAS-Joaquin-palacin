@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { TimeEngine } from "@/lib/time-engine";
+import { addExternalDays } from "@/lib/external-calendar";
 
 async function requireAuth() {
   const session = await getServerSession(authOptions);
@@ -221,9 +222,9 @@ export async function launchMachineToProject(machineId: string, projectName: str
       let taskEndDate: Date;
 
       if (isExternal && (part.deliveryDays || 0) > 0) {
-        // Para pedido externo: fecha fin por calendario natural
-        taskEndDate = new Date(new Date(projectStartDate).setDate(new Date(projectStartDate).getDate() + (part.deliveryDays || 0)));
-        // Pero las horas estimadas deben ser las laborables en ese periodo
+        // Para pedido externo: fecha fin por calendario genérico de proveedores (sin agosto)
+        taskEndDate = addExternalDays(projectStartDate, part.deliveryDays!);
+        // Las horas estimadas se calculan como horas laborables internas en ese periodo
         finalEstimatedHours = engine.calculateBusinessHours(projectStartDate, taskEndDate);
       } else {
         // Para fabricación: fecha fin por motor de tiempo (horas laborables)
@@ -291,6 +292,45 @@ export async function launchMachineToProject(machineId: string, projectName: str
     const rootParts = machine.parts.filter(p => !p.parentId);
     for (const rp of rootParts) {
       await clonePart(rp.id);
+    }
+
+    // --- NUEVA LÓGICA: VINCULAR DEPENDENCIAS Y RECALCULAR TIEMPOS ---
+    
+    // 1. Crear registros de Predecesores basados en la jerarquía
+    for (const part of machine.parts) {
+      if (part.parentId) {
+        const childTaskId = partIdToTaskId.get(part.id);
+        const parentTaskId = partIdToTaskId.get(part.parentId);
+        
+        if (childTaskId && parentTaskId) {
+          await prisma.taskDependency.create({
+            data: {
+              successorId: parentTaskId,
+              predecessorId: childTaskId,
+            }
+          });
+        }
+      }
+    }
+
+    // 2. Disparar recalibración de fechas en cascada desde las piezas base (hojas)
+    // Buscamos tareas que tengan sucesoras pero NO tengan predecesoras propias.
+    const leafTasks = await prisma.task.findMany({
+      where: { 
+        projectId: project.id,
+        successors: { some: {} },
+        predecessors: { none: {} }
+      },
+      select: { id: true, startDate: true, endDate: true }
+    });
+
+    // Importamos dinámicamente para evitar ciclos si fuera necesario, 
+    // pero como es una server action podemos importar de tasks.ts
+    const { updateTaskDatesAndCascade } = await import("./tasks");
+
+    for (const leaf of leafTasks) {
+      // Forzamos un recalculado desde cada hoja para que se propague a los ensambles
+      await updateTaskDatesAndCascade(leaf.id, leaf.startDate, leaf.endDate);
     }
 
     const cookieStore = await cookies();
@@ -366,8 +406,9 @@ export async function importMachineFromExcel(formData: FormData) {
         horas = Number(horasValue) || 0;
       }
 
-      const plazoValue = item["plazo-entrega-dias"] || item["plazo entrega dias"] || item["plazo entrega"];
-      const plazo = Number(plazoValue) || 1;
+      const plazoValue = item["plazo-entrega-semanas-laborales"] || item["plazo-entrega-semanas"] || item["plazo entrega semanas"];
+      const plazoSemanas = Number(plazoValue) || 1;
+      const plazoDias = plazoSemanas * 7; // Convertir semanas laborales a días
 
       rows.push({
         nombre: item.nombre?.toString().trim() || "Sin nombre",
@@ -375,7 +416,7 @@ export async function importMachineFromExcel(formData: FormData) {
         parentName: item["pertenece a ensamble"]?.toString().trim() || "",
         horas: horas,
         etapa: normalizeStageName(item["etapa inicial"]?.toString() || ""),
-        plazo: plazo > 0 ? plazo : 1
+        plazo: plazoDias > 0 ? plazoDias : 7
       });
     });
 
@@ -410,7 +451,7 @@ export async function importMachineFromExcel(formData: FormData) {
       }
     }
 
-    // 5. Segunda pasada: Vincular jerarquías (con búsqueda insensible a mayúsculas)
+    // 5. Segunda pasada: Vincular jerarquías y marcar ensambles
     for (const r of rows) {
       if (r.parentName) {
         const parentKey = r.parentName.toLowerCase();
@@ -424,6 +465,7 @@ export async function importMachineFromExcel(formData: FormData) {
           });
 
           // Si una pieza tiene hijos, la convertimos automáticamente en Ensamble
+          // y le asignamos la etapa de "Ensambles" por defecto
           await prisma.catalogPart.update({
             where: { id: parentId },
             data: { preferredStage: "Ensambles" }

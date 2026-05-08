@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { createTask, TaskWithRelations } from "@/lib/actions/tasks";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { cn } from "@/lib/utils";
-import { Clock, Package, Plus, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2 } from "lucide-react";
+import { Clock, Package, Plus, Layers, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2 } from "lucide-react";
 import { TaskStatus } from "@prisma/client";
 import { useCallback, useRef } from "react";
 
@@ -27,6 +27,7 @@ type Props = {
   initialStage?: string
   onClose: () => void
   onTaskCreated: (task: TaskWithRelations) => void
+  initialParentId?: string | null
 }
 
 function fromDateTimeInput(str: string): Date {
@@ -54,7 +55,7 @@ function getDefaultStartDate(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T08:00`;
 }
 
-export function CreateTaskModal({ open, projectId, stages, users, allTasks, initialStage, onClose, onTaskCreated }: Props) {
+export function CreateTaskModal({ open, projectId, stages, users, allTasks, initialStage, onClose, onTaskCreated, initialParentId }: Props) {
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [isAssembly, setIsAssembly] = useState(false);
@@ -67,7 +68,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [isCalculating, setIsCalculating] = useState(false);
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [predecessorIds, setPredecessorIds] = useState<string[]>([]);
-  const [parentId, setParentId] = useState<string | null>(null);
+  const [parentId, setParentId] = useState<string | null>(initialParentId ?? null);
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState("");
 
@@ -351,64 +352,61 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
 
           {/* Columna Derecha: Relaciones */}
           <div className="space-y-5">
-            {/* Tarea Padre (Proyecto/Ensamble) */}
-            <div className="space-y-1.5 px-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                <Package size={14} className="text-purple-500" /> Tarea Padre / Ensamble (opcional)
+            {/* Pertenece a: */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Layers size={12} className="text-purple-500" /> Pertenece a:
               </Label>
-              <Input
-                placeholder="Buscar ensamble padre..."
-                value={parentSearch}
-                onChange={e => setParentSearch(e.target.value)}
-                className="h-8 text-[11px] rounded-lg border-gray-100 mb-1"
-              />
-              <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-2xl border border-gray-100 space-y-1">
-                {allTasks.length === 0 ? (
-                  <p className="text-[10px] text-gray-400 italic p-2">No hay tareas disponibles</p>
-                ) : (
-                  <>
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Buscar padre..."
+                  value={parentSearch}
+                  onChange={e => setParentSearch(e.target.value)}
+                  className="h-8 text-[11px] rounded-lg border-gray-100 flex-1"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-[10px]"
+                  onClick={() => setParentId(null)}
+                >
+                  Limpiar
+                </Button>
+              </div>
+
+              <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1">
+                {parentId === null && (
+                  <div className="text-[10px] text-gray-400 italic text-center py-1">Sin padre asignado</div>
+                )}
+                {allTasks
+                  .filter(t => normalize(t.name).includes(normalize(parentSearch)))
+                  .sort((a, b) => (a.id === parentId ? -1 : b.id === parentId ? 1 : 0))
+                  .slice(0, 10)
+                  .map((t) => (
                     <button
-                      onClick={() => setParentId(null)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${parentId === null
-                        ? "bg-purple-50 border-purple-300 text-purple-700 shadow-sm"
-                        : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
+                      key={t.id}
+                      type="button"
+                      onClick={() => setParentId(t.id)}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id
+                        ? "bg-purple-50 border-purple-300 text-purple-700"
+                        : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
                         }`}
                     >
-                      <span>(Ninguno - Nivel Raíz)</span>
-                      {parentId === null && <CheckCircle2 size={12} />}
+                      <div className="flex items-center gap-2 truncate">
+                        {t.isAssembly && <Package size={11} className="text-purple-400 shrink-0" />}
+                        <span className="truncate">{t.name}</span>
+                      </div>
+                      {parentId === t.id && <CheckCircle2 size={11} className="shrink-0" />}
                     </button>
-                    {allTasks
-                      .filter(t => normalize(t.name).includes(normalize(parentSearch)))
-                      .sort((a, b) => {
-                        if (a.id === parentId) return -1;
-                        if (b.id === parentId) return 1;
-                        return a.name.localeCompare(b.name);
-                      })
-                      .map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => setParentId(t.id)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${parentId === t.id
-                            ? "bg-purple-50 border-purple-300 text-purple-700 shadow-sm"
-                            : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
-                            }`}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            {t.isAssembly && <Package size={12} className="text-purple-400 shrink-0" />}
-                            <span className="truncate">{t.name}</span>
-                          </div>
-                          {parentId === t.id && <CheckCircle2 size={12} className="shrink-0" />}
-                        </button>
-                      ))}
-                  </>
-                )}
+                  ))}
               </div>
             </div>
 
-            {/* Dependencias (Predecesoras) */}
-            <div className="space-y-1.5 px-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                <GitBranch size={14} className="text-blue-500" /> Depende de... (opcional)
+            {/* Dependencias */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <GitBranch size={12} className="text-blue-500" /> Depende de:
               </Label>
               <Input
                 placeholder="Buscar dependencia..."

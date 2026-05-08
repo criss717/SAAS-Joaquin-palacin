@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, createTask, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity, updateTaskIsAssembly } from "@/lib/actions/tasks";
 import { updateCatalogFromTask } from "@/lib/actions/catalog";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
-import { Package, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw } from "lucide-react";
+import { Package, Layers, GitBranch, Clock, Plus, X, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
 
@@ -23,6 +23,7 @@ type Props = {
   allTasks: TaskWithRelations[]
   onClose: () => void
   onTaskUpdated: (updated: TaskWithRelations) => void
+  onCreateSubTask?: (parentId: string) => void
   onDeleteTask: (taskId: string) => void
 }
 
@@ -45,7 +46,7 @@ function fromDateTimeInput(str: string): Date {
 const normalize = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onDeleteTask }: Props) {
+export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onCreateSubTask, onDeleteTask }: Props) {
   const [isPending, startTransition] = useTransition();
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
   const isClosingRef = useRef(false);
@@ -515,52 +516,6 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Sub-tareas Section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <GitBranch size={14} className="text-blue-500" /> Sub-Piezas/tareas
-                </Label>
-                <div className="text-[10px] font-bold text-gray-400">
-                  {completedSubs}/{totalSubs} completadas
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Nueva sub-tarea..."
-                  value={newSubTaskName}
-                  onChange={e => setNewSubTaskName(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleCreateSubTask()}
-                  className="h-9 text-sm rounded-xl"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleCreateSubTask}
-                  disabled={!newSubTaskName.trim() || isPending}
-                  className="h-9 px-3 rounded-xl cursor-pointer"
-                >
-                  <Plus size={16} />
-                </Button>
-              </div>
-
-              <div className="bg-gray-50 rounded-xl p-2 border border-gray-100 max-h-48 overflow-y-auto space-y-1">
-                {allTasks.filter(t => t.parentId === task.id).length === 0 ? (
-                  <p className="text-[10px] text-gray-400 italic text-center py-2">No hay sub-tareas</p>
-                ) : (
-                  allTasks.filter(t => t.parentId === task.id).map(sub => (
-                    <div key={sub.id} className="flex items-center justify-between bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
-                      <div className="flex items-center gap-2 truncate">
-                        <div className={`w-2 h-2 rounded-full ${sub.status === "HECHO" ? "bg-green-500" : "bg-blue-400"}`} />
-                        <span className="text-[11px] font-medium text-gray-700 truncate">{sub.name}</span>
-                      </div>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase">{sub.stage}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
             {/* Estimación, Cantidad y Fechas */}
             <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
               <div className="space-y-1.5">
@@ -700,14 +655,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Tarea Padre / Ensamble */}
+            {/* Pertenece a: (Padre/Ensamble) */}
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
-                <Package size={14} className="text-purple-500" /> Tarea Padre / Ensamble
+                <Layers size={14} className="text-purple-500" /> Pertenece a:
               </Label>
 
               <Input
-                placeholder="Buscar ensamble..."
+                placeholder="Buscar ensamble o pieza padre..."
                 value={parentSearch}
                 onChange={e => setParentSearch(e.target.value)}
                 className="h-8 text-[11px] rounded-lg border-gray-100"
@@ -721,13 +676,19 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
                     }`}
                 >
-                  <span>(Sin Tarea Superior)</span>
+                  <span>(Ninguno)</span>
                   {parentId === null && <CheckCircle2 size={12} />}
                 </button>
                 {filteredParentTasks.map((t: TaskWithRelations) => (
                   <button
                     key={t.id}
-                    onClick={() => setParentId(t.id)}
+                    onClick={() => {
+                      if (predecessorIds.includes(t.id)) {
+                        Swal.fire('Error', 'No puedes pertenecer a una pieza que es tu propia dependencia.', 'error');
+                        return;
+                      }
+                      setParentId(t.id);
+                    }}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id
                       ? "bg-purple-50 border-purple-300 text-purple-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
@@ -743,14 +704,27 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
             </div>
 
-            {/* Dependencias */}
+            {/* Depende de: (Predecesores) */}
             <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
-                <GitBranch size={14} className="text-blue-500" /> Dependencias
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1">
+                  <GitBranch size={14} className="text-blue-500" /> Depende de:
+                </Label>
+                <button 
+                  onClick={() => {
+                    if (task && onCreateSubTask) {
+                      onCreateSubTask(task.id);
+                      onClose(); // Cerramos el actual para abrir el de creación
+                    }
+                  }}
+                  className="text-[10px] text-blue-500 font-bold hover:underline cursor-pointer"
+                >
+                  + Añadir nueva
+                </button>
+              </div>
 
               <Input
-                placeholder="Buscar dependencia..."
+                placeholder="Buscar pieza de la que depende..."
                 value={depSearch}
                 onChange={e => setDepSearch(e.target.value)}
                 className="h-8 text-[11px] rounded-lg border-gray-100"
@@ -760,7 +734,13 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 {filteredDepTasks.map((t: TaskWithRelations) => (
                   <button
                     key={t.id}
-                    onClick={() => handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id])}
+                    onClick={() => {
+                      if (parentId === t.id) {
+                        Swal.fire('Error', 'No puedes depender de la pieza a la que perteneces.', 'error');
+                        return;
+                      }
+                      handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id]);
+                    }}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${predecessorIds.includes(t.id)
                       ? "bg-blue-50 border-blue-300 text-blue-700"
                       : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"

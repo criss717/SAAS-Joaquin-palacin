@@ -3,6 +3,7 @@
 import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { addExternalDays } from "@/lib/external-calendar";
 
 export async function setActiveProjectCookie(projectId: string) {
   const cookieStore = await cookies();
@@ -159,10 +160,9 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
           // Desplazar inicio
           newTaskStart = normalizeToWorkStart(engine.addBusinessHours(oldTaskStart, deltaHours));
           
-          if (t.stage === "Pedido Externo" && (t.deliveryDays || 0) > 0) {
-            // Pedido externo: Mantiene días naturales desde el nuevo inicio
-            newTaskEnd = new Date(newTaskStart);
-            newTaskEnd.setDate(newTaskEnd.getDate() + (t.deliveryDays || 1));
+          if ((t.deliveryDays || 0) > 0) {
+            // Pedido externo: usa calendario genérico de proveedores (sin agosto)
+            newTaskEnd = addExternalDays(newTaskStart, t.deliveryDays!);
           } else {
             // Fabricación/Otros: Desplazar fin por el mismo delta y normalizarlo
             newTaskEnd = normalizeToWorkStart(engine.addBusinessHours(oldTaskEnd, deltaHours));

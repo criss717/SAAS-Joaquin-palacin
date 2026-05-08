@@ -54,6 +54,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
   const [filterAssignee, setFilterAssignee] = useState("");
   const [searchTask, setSearchTask] = useState("");
   const [preSelectedStage, setPreSelectedStage] = useState<string | undefined>(undefined);
+  const [preSelectedParentId, setPreSelectedParentId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(true);
   const [viewMode, setViewMode] = useState<"kanban" | "gantt">("kanban");
   const [isShifting, setIsShifting] = useState(false);
@@ -478,6 +479,10 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
         users={users}
         allTasks={tasks}
         onClose={() => setSelectedTask(null)}
+        onCreateSubTask={(parentId) => {
+          setPreSelectedParentId(parentId);
+          setShowCreateTask(true);
+        }}
         onTaskUpdated={(updated) => {
           setTasks(prev => {
             const exists = prev.some(t => t.id === updated.id);
@@ -493,21 +498,24 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
       />
 
       <CreateTaskModal
-        key={showCreateTask ? `open-${preSelectedStage}` : "closed"}
+        key={showCreateTask ? `open-${preSelectedStage}-${preSelectedParentId}` : "closed"}
         open={showCreateTask}
         projectId={stages[0]?.projectId ?? ""}
         stages={stages}
         users={users}
         allTasks={tasks}
         initialStage={preSelectedStage}
+        initialParentId={preSelectedParentId}
         onClose={() => {
           setShowCreateTask(false);
           setPreSelectedStage(undefined);
+          setPreSelectedParentId(null);
         }}
         onTaskCreated={(newTask) => {
           setTasks(prev => [...prev, newTask]);
           setShowCreateTask(false);
           setPreSelectedStage(undefined);
+          setPreSelectedParentId(null);
         }}
       />
 

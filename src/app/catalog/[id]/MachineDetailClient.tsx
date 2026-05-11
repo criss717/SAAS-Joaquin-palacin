@@ -188,7 +188,19 @@ export function MachineDetailClient({
   };
 
   const handleAddMaterial = async () => {
-    if (!editingPart || !newMaterialId) return;
+    if (!editingPart) return;
+    if (!newMaterialId) {
+      toast.error("Selecciona un material");
+      return;
+    }
+    if (!newUnitTypeId) {
+      toast.error("Selecciona el tipo de unidad");
+      return;
+    }
+    if (!newMaterialQty || newMaterialQty <= 0) {
+      toast.error("La cantidad debe ser mayor a 0");
+      return;
+    }
     setLoading(true);
     const res = await addMaterialToCatalogPart({
       catalogPartId: editingPart.id,
@@ -236,6 +248,22 @@ export function MachineDetailClient({
 
   const handleUpdatePart = async () => {
     if (!editingPart || !editName.trim()) return;
+    if (newMaterialId || newUnitTypeId || newMaterialQty > 0) {
+      const result = await Swal.fire({
+        title: "Material sin agregar",
+        text: "Tienes un material pendiente sin añadir. ¿Quieres descartarlo y continuar?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, descartar y actualizar",
+        cancelButtonText: "No, quiero añadirlo",
+        confirmButtonColor: "#3b82f6",
+        heightAuto: false
+      });
+      if (!result.isConfirmed) return;
+      setNewMaterialId(null);
+      setNewMaterialQty(0);
+      setNewUnitTypeId(null);
+    }
     setLoading(true);
     const res = await updateCatalogPart(editingPart.id, machine.id, {
       name: editName,
@@ -455,12 +483,12 @@ export function MachineDetailClient({
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
-              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(parseFloat(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
+              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(Number(parseFloat(e.target.value).toFixed(2)) || 1)} className="h-10 border-gray-200 rounded-xl" />
             </div>
             {!selectedParentId && (
               <div className="space-y-2">
                 <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas (Mano de Obra)</Label>
-                <Input type="number" step="0.1" value={qtyOrDays} onChange={e => setQtyOrDays(parseFloat(e.target.value) || 0)} className="h-10 border-gray-200 rounded-xl" />
+                <Input type="number" step="0.1" value={qtyOrDays} onChange={e => setQtyOrDays(Number(parseFloat(e.target.value).toFixed(1)) || 0)} className="h-10 border-gray-200 rounded-xl" />
               </div>
             )}
           </div>
@@ -473,19 +501,21 @@ export function MachineDetailClient({
 
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader><DialogTitle className="text-xl font-black text-gray-900">Editar Pieza / Ensamble</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-[17px] font-black text-gray-900">Editar Pieza / Ensamble</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-600 uppercase">Nombre</Label>
               <Input value={editName} onChange={e => setEditName(e.target.value)} className="h-10 border-gray-200 rounded-xl" />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
-              <Input type="number" min={1} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
-              <Input type="number" step="0.1" value={editHours} onChange={e => setEditHours(parseFloat(e.target.value) || 0)} className="h-10 border-gray-200 rounded-xl" />
+            <div className="flex items-end gap-2">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
+                <Input type="number" min={1} value={editQty} onChange={e => setEditQty(Number(parseFloat(e.target.value).toFixed(2)) || 1)} className="h-10 border-gray-200 rounded-xl" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
+                <Input type="number" step="0.1" value={editHours} onChange={e => setEditHours(Number(parseFloat(e.target.value).toFixed(1)) || 0)} className="h-10 border-gray-200 rounded-xl" />
+              </div>
             </div>
 
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">
@@ -511,37 +541,55 @@ export function MachineDetailClient({
               </div>
 
               <div className="pt-2 border-t border-gray-200 grid grid-cols-1 gap-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nuevo Material</Label>
-                    <Popover>
-                      <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-between h-9 rounded-xl border-gray-200 font-medium text-xs flex items-center px-3", !newMaterialId && "text-gray-400")}>
-                        <span className="truncate">{newMaterialId ? materials.find(m => m.id === newMaterialId)?.name : "Seleccionar..."}</span>
-                        <Search className="ml-2 h-3 w-3 shrink-0 opacity-50" />
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[200px] p-0 rounded-xl shadow-xl border-gray-100">
-                        <Command>
-                          <CommandInput placeholder="Buscar material..." className="h-8 text-xs" />
-                          <CommandList className="max-h-32 kanban-scroll">
-                            <CommandEmpty className="text-[10px] py-2 text-center">No encontrado.</CommandEmpty>
-                            <CommandGroup>
-                              {materials.map(m => (
-                                <CommandItem key={m.id} value={m.name} onSelect={() => setNewMaterialId(m.id)} className="text-xs cursor-pointer">
-                                  <Check className={cn("mr-2 h-3 w-3", newMaterialId === m.id ? "opacity-100" : "opacity-0")} />
-                                  {m.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nuevo Material</Label>
+                  <Popover>
+                    <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-between h-9 rounded-xl border-gray-200 font-medium text-xs flex items-center px-3", !newMaterialId && "text-gray-400")}>
+                      <span className="truncate">{newMaterialId ? materials.find(m => m.id === newMaterialId)?.name : "Seleccionar..."}</span>
+                      <Search className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0 rounded-xl shadow-xl border-gray-100">
+                      <Command>
+                        <CommandInput placeholder="Buscar material..." className="h-8 text-xs" />
+                        <CommandList className="max-h-32 kanban-scroll">
+                          <CommandEmpty className="text-[10px] py-2 text-center">No encontrado.</CommandEmpty>
+                          <CommandGroup>
+                            {materials.map(m => (
+                              <CommandItem key={m.id} value={m.name} onSelect={() => setNewMaterialId(m.id)} className="text-xs cursor-pointer">
+                                <Check className={cn("mr-2 h-3 w-3", newMaterialId === m.id ? "opacity-100" : "opacity-0")} />
+                                {m.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <div className="space-y-1 w-[120px]">
+                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cant x Und</Label>
+                    <Input type="number" step="0.1" value={newMaterialQty || ""} onChange={e => setNewMaterialQty(Number(parseFloat(e.target.value).toFixed(2)) || 0)} className="h-9 w-full border-gray-200 rounded-xl text-xs" />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tipo Unidad</Label>
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                      Tipo Unidad
+                      {(newMaterialId || newUnitTypeId || newMaterialQty > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => { setNewMaterialId(null); setNewMaterialQty(0); setNewUnitTypeId(null); }}
+                          className="text-[9px] text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                          title="Limpiar selección"
+                        >
+                          limpiar
+                        </button>
+                      )}
+                    </Label>
                     <Popover>
                       <PopoverTrigger className={cn(buttonVariants({ variant: "outline" }), "w-full justify-between h-9 rounded-xl border-gray-200 font-medium text-xs flex items-center px-3", !newUnitTypeId && "text-gray-400")}>
-                        <span className="truncate">{newUnitTypeId ? unitTypes.find(u => u.id === newUnitTypeId)?.name : "Ud."}</span>
+                        <span className="truncate">{newUnitTypeId ? unitTypes.find(u => u.id === newUnitTypeId)?.name : ""}</span>
                         <Scale className="ml-2 h-3 w-3 shrink-0 opacity-50" />
                       </PopoverTrigger>
                       <PopoverContent className="w-[150px] p-0 rounded-xl shadow-xl border-gray-100">
@@ -562,14 +610,8 @@ export function MachineDetailClient({
                       </PopoverContent>
                     </Popover>
                   </div>
-                </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad x Unidad</Label>
-                    <Input type="number" step="0.01" value={newMaterialQty || ""} onChange={e => setNewMaterialQty(parseFloat(e.target.value) || 0)} className="h-9 border-gray-200 rounded-xl text-xs" />
-                  </div>
-                  <Button onClick={handleAddMaterial} disabled={!newMaterialId || loading} className="h-9 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 transition-all">
-                    Añadir
+                  <Button onClick={handleAddMaterial} disabled={!newMaterialId || loading} className="h-9 rounded-xl bg-green-200 hover:bg-green-700 text-black font-bold px-4 transition-all">
+                    Agr. Material
                   </Button>
                 </div>
               </div>
@@ -593,7 +635,7 @@ export function MachineDetailClient({
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
-              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
+              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(Number(parseFloat(e.target.value).toFixed(1)) || 1)} className="h-10 border-gray-200 rounded-xl" />
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">

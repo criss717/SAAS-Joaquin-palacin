@@ -486,6 +486,13 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                       />
                     );
                   })}
+                <button
+                  onClick={() => setShowStageManager(true)}
+                  title="Agregar etapa"
+                  className="flex items-center justify-center w-12 h-12 rounded-full bg-white/60 hover:bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-md transition-all duration-200 mt-6 group"
+                >
+                  <Plus size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors group-hover:scale-110" strokeWidth={2} />
+                </button>
                 {colProvided.placeholder}
               </div>
             )}

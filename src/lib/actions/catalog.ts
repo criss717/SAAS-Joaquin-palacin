@@ -449,7 +449,10 @@ export async function launchMachineToProject(machineId: string, projectName: str
 export async function importMachineFromExcel(formData: FormData) {
   try {
     const file = formData.get("file") as File;
+    const machineNameFromForm = formData.get("machineName") as string | null;
     if (!file) return { success: false, error: "No se proporcionó ningún archivo." };
+
+    const machineName = machineNameFromForm || file.name.replace(".xlsx", "");
 
     const arrayBuffer = await file.arrayBuffer();
     // Importación dinámica para aligerar la carga del servidor de desarrollo
@@ -481,7 +484,7 @@ export async function importMachineFromExcel(formData: FormData) {
     // 2. Crear la Máquina Plantilla
     const machine = await prisma.machineCatalog.create({
       data: {
-        name: file.name.replace(".xlsx", ""),
+        name: machineName,
         description: `Importado de Excel el ${new Date().toLocaleString()}`
       }
     });
@@ -613,7 +616,14 @@ export async function importMachineFromExcel(formData: FormData) {
     }
 
     revalidatePath("/catalog");
-    return { success: true, machine };
+    
+    // Obtener la máquina con el conteo de piezas
+    const machineWithCount = await prisma.machineCatalog.findUnique({
+      where: { id: machine.id },
+      include: { _count: { select: { parts: true } } }
+    });
+    
+    return { success: true, machine: machineWithCount };
   } catch (error) {
     console.error("Excel Import Error:", error);
     return { success: false, error: "Error procesando el archivo Excel." };
@@ -731,12 +741,52 @@ export async function updateCatalogFromTask(taskId: string) {
     });
   } else if (task.catalogPartId) {
     // Es una pieza (Pedido Externo sin operaciones)
+    const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
     await prisma.catalogPart.update({
       where: { id: task.catalogPartId },
-      data: { deliveryDays: task.deliveryDays || 0 }
+      data: { 
+        deliveryDays: task.deliveryDays || 0,
+        estimatedHours: realUnitHours
+      }
     });
   } else {
     throw new Error("Esta tarea no está vinculada a ningún elemento del catálogo");
+  }
+
+  revalidatePath("/catalog");
+  return { success: true };
+}
+
+/** Sincroniza la lista de materiales de una tarea con su pieza en el catálogo maestro */
+export async function updateCatalogMaterialsFromTask(taskId: string) {
+  await requireAdmin();
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: {
+      materials: true
+    }
+  });
+
+  if (!task || !task.catalogPartId) {
+    throw new Error("Tarea no encontrada o no vinculada a una pieza del catálogo.");
+  }
+
+  // 1. Eliminar materiales actuales de la pieza en el catálogo
+  await prisma.catalogPartMaterial.deleteMany({
+    where: { catalogPartId: task.catalogPartId }
+  });
+
+  // 2. Copiar materiales de la tarea a la pieza del catálogo
+  for (const tm of task.materials) {
+    await prisma.catalogPartMaterial.create({
+      data: {
+        catalogPartId: task.catalogPartId,
+        materialId: tm.materialId,
+        quantityPerUnit: tm.quantityPerUnit,
+        unitTypeId: tm.unitTypeId
+      }
+    });
   }
 
   revalidatePath("/catalog");

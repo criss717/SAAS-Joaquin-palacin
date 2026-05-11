@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
 import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity, updateTaskIsAssembly, getProjectMaterialsSummary, addMaterialToTask, removeMaterialFromTask } from "@/lib/actions/tasks";
-import { updateCatalogFromTask } from "@/lib/actions/catalog";
+import { updateCatalogFromTask, updateCatalogMaterialsFromTask } from "@/lib/actions/catalog";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { downloadMaterialReport } from "@/lib/utils/excel";
 import { Package, Layers, GitBranch, Clock, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw, Download, Save, UserPlus, Check } from "lucide-react";
@@ -223,6 +223,33 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       console.error("Error al exportar materiales:", error);
       Swal.fire("Error", "No se pudo generar el Excel de materiales.", "error");
     }
+  };
+
+  const handleSyncMaterials = async () => {
+    if (!task) return;
+    if (!task.materials || task.materials.length === 0) {
+      Swal.fire("Sin materiales", "No hay materiales para sincronizar.", "info");
+      return;
+    }
+    Swal.fire({
+      title: "Sincronizar materiales",
+      text: "Esto actualizará los materiales en el catálogo maestro. ¿Continuar?",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Sincronizar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#3b82f6"
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          await updateCatalogMaterialsFromTask(task.id);
+          toast.success("Materiales sincronizados correctamente");
+        } catch (err) {
+          toast.error("Error al sincronizar materiales");
+          console.error(err);
+        }
+      }
+    });
   };
 
   // Estados para búsqueda
@@ -571,21 +598,6 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <Trash2 size={16} />
                   Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
                 </Button>
-
-                {(task.catalogPartId || task.catalogOperationId) && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSyncCatalog}
-                    disabled={isSyncingCatalog}
-                    title="Actualizar las horas en el catálogo maestro para futuros despieces"
-                    className="text-xs h-7 mx-2 gap-2 border-gray-300 text-gray-700 hover:bg-gray-100 rounded-xl transition-all font-bold"
-                  >
-                    {isSyncingCatalog ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                    Catálogo maestro
-                  </Button>
-                )}
               </div>
               <div className="flex gap-3 mr-8">
                 <Button
@@ -674,9 +686,23 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-center justify-between">
-                  Horas Totales
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800">
+                    Horas Totales
+                  </Label>
+                  {(task.catalogPartId || task.catalogOperationId) && (
+                    <button
+                      type="button"
+                      onClick={handleSyncCatalog}
+                      disabled={isSyncingCatalog}
+                      title="Actualizar las horas en el catálogo maestro para futuros despieces"
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      {isSyncingCatalog ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                      Sincronizar
+                    </button>
+                  )}
+                </div>
                 <Input
                   type="number"
                   step="0.5"
@@ -709,12 +735,20 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
                   <Package size={14} className="text-blue-500" /> Lista de Materiales Requeridos
                 </Label>
-                <button onClick={() => handleDownloadMaterials()}
-                  title="Descargar materiales"
-                  className="bg-green-100 text-green-800 hover:bg-green-200 px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2"
-                  disabled={task?.materials?.length === 0}>
-                  <Download size={12} /> Descargar
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => handleSyncMaterials()}
+                    title="Sincronizar materiales con catálogo"
+                    className="bg-purple-100 text-purple-800 hover:bg-purple-200 px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1"
+                    disabled={task?.materials?.length === 0}>
+                    <RefreshCw size={12} /> Sincronizar
+                  </button>
+                  <button onClick={() => handleDownloadMaterials()}
+                    title="Descargar materiales"
+                    className="bg-green-100 text-green-800 hover:bg-green-200 px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2"
+                    disabled={task?.materials?.length === 0}>
+                    <Download size={12} /> Descargar
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2 max-h-30 overflow-y-auto kanban-scroll pr-2">

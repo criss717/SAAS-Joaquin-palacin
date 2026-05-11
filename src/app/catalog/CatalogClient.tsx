@@ -16,15 +16,15 @@ type Machine = {
   id: string;
   name: string;
   description: string | null;
-  parts: { name: string }[];
+  parts?: { name: string }[];
   _count: { parts: number };
 };
 
-export function CatalogClient({ 
-  initialMachines, 
-  initialMaterials = [], 
-  initialUnitTypes = [] 
-}: { 
+export function CatalogClient({
+  initialMachines,
+  initialMaterials = [],
+  initialUnitTypes = []
+}: {
   initialMachines: Machine[],
   initialMaterials?: { id: string, name: string }[],
   initialUnitTypes?: { id: string, name: string }[]
@@ -95,14 +95,44 @@ export function CatalogClient({
       return;
     }
 
+    // 2. Pedir nombre de la máquina antes de importar
+    const { value: machineName } = await Swal.fire({
+      title: "Nombre de la Máquina",
+      html: `
+        <input type="text" id="swal-machine-name" class="swal2-input w-full" 
+          placeholder="Ej: Máquina fresadora CNC" 
+          value="${file.name.replace(".xlsx", "")}">
+      `,
+      preConfirm: () => {
+        const name = (document.getElementById("swal-machine-name") as HTMLInputElement)?.value;
+        if (!name?.trim()) {
+          Swal.showValidationMessage("El nombre es obligatorio");
+          return false;
+        }
+        return name.trim();
+      },
+      confirmButtonText: "Importar",
+      cancelButtonText: "Cancelar",
+      showCancelButton: true,
+      confirmButtonColor: "#3b82f6",
+      heightAuto: false
+
+    });
+
+    if (!machineName) {
+      e.target.value = "";
+      return;
+    }
+
     setLoading(true);
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("machineName", machineName);
 
-    const res = await importMachineFromExcel(formData);
+const res = await importMachineFromExcel(formData);
     
     if (res.success && res.machine) {
-      setMachines([{ ...res.machine, parts: [], _count: { parts: 0 } }, ...machines]);
+      setMachines([res.machine, ...machines]);
       toast.success(`Catálogo "${res.machine.name}" importado correctamente.`);
     } else {
       // 2. Manejo de errores específicos con SweetAlert2
@@ -125,7 +155,7 @@ export function CatalogClient({
         toast.error(res.error || "Error al importar Excel");
       }
     }
-    
+
     setLoading(false);
     e.target.value = ""; // Reset input
   };
@@ -262,7 +292,7 @@ export function CatalogClient({
     }
   };
 
-  const handleEditMaterial = async (m: {id: string, name: string}) => {
+  const handleEditMaterial = async (m: { id: string, name: string }) => {
     const { value: name } = await Swal.fire({
       title: 'Editar Material',
       input: 'text',
@@ -274,7 +304,7 @@ export function CatalogClient({
     if (name) {
       const res = await updateMaterial(m.id, name);
       if (res.success) {
-        setMaterials(materials.map(x => x.id === m.id ? {...x, name} : x));
+        setMaterials(materials.map(x => x.id === m.id ? { ...x, name } : x));
         toast.success("Material actualizado.");
       }
     }
@@ -319,7 +349,7 @@ export function CatalogClient({
     }
   };
 
-  const handleEditUnit = async (u: {id: string, name: string}) => {
+  const handleEditUnit = async (u: { id: string, name: string }) => {
     const { value: name } = await Swal.fire({
       title: 'Editar Unidad',
       input: 'text',
@@ -331,7 +361,7 @@ export function CatalogClient({
     if (name) {
       const res = await updateUnitType(u.id, name);
       if (res.success) {
-        setUnitTypes(unitTypes.map(x => x.id === u.id ? {...x, name} : x));
+        setUnitTypes(unitTypes.map(x => x.id === u.id ? { ...x, name } : x));
         toast.success("Unidad actualizada.");
       }
     }
@@ -365,7 +395,7 @@ export function CatalogClient({
   // Lógica de filtrado y paginación
   const filteredMachines = machines.filter(m =>
     m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    m.parts.some(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    (m.parts?.some(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())) ?? false)
   );
 
   const totalPages = Math.ceil(filteredMachines.length / itemsPerPage);
@@ -536,9 +566,9 @@ export function CatalogClient({
               </h2>
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Input 
-                    placeholder="Buscar material..." 
-                    value={materialSearch} 
+                  <Input
+                    placeholder="Buscar material..."
+                    value={materialSearch}
                     onChange={e => setMaterialSearch(e.target.value)}
                     className="h-8 text-xs w-32 border-gray-100 bg-gray-50 rounded-lg pl-7"
                   />
@@ -580,9 +610,9 @@ export function CatalogClient({
               </h2>
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Input 
-                    placeholder="Buscar unidad..." 
-                    value={unitSearch} 
+                  <Input
+                    placeholder="Buscar unidad..."
+                    value={unitSearch}
                     onChange={e => setUnitSearch(e.target.value)}
                     className="h-8 text-xs w-32 border-gray-100 bg-gray-50 rounded-lg pl-7"
                   />

@@ -94,10 +94,10 @@ export function MachineDetailClient({
   const handleCreatePart = async () => {
     if (!name.trim()) return;
     setLoading(true);
-    const res = await createCatalogPart({ 
-      name, 
-      machineId: machine.id, 
-      parentId: selectedParentId || undefined, 
+    const res = await createCatalogPart({
+      name,
+      machineId: machine.id,
+      parentId: selectedParentId || undefined,
       quantity: qtyOrDays,
       estimatedHours: selectedParentId ? 0 : qtyOrDays // Si es top level, usamos el valor del input como horas
     });
@@ -395,7 +395,7 @@ export function MachineDetailClient({
           </div>
 
           <Button onClick={() => handleDownloadMaterials()} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl h-11 font-bold whitespace-nowrap">
-            <DownloadCloud size={18} className="mr-2" /> Todo el Proyecto
+            <DownloadCloud size={18} className="mr-2" /> Toda la maquina
           </Button>
 
           <Button onClick={() => openAddPart(null)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl h-11 font-bold whitespace-nowrap">

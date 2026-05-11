@@ -27,6 +27,12 @@ export type TaskWithRelations = {
   quantity: number
   catalogPartId?: string | null
   catalogOperationId?: string | null
+  materials: {
+    id: string;
+    material: { id: string; name: string };
+    quantityPerUnit: number;
+    unitType: { id: string; name: string } | null;
+  }[]
   assignees: TaskAssignee[]
   subTasks: { id: string; name: string; stage: string; status: TaskStatus }[]
   predecessors: { predecessor: { id: string; name: string } }[]
@@ -52,6 +58,15 @@ interface PrismaTaskWithRelations {
   catalogPartId: string | null
   catalogOperationId: string | null
   deliveryDays: number | null
+  materialId: string | null
+  materialQuantityPerUnit: number | null
+  unitTypeId: string | null
+  materials: {
+    id: string;
+    material: { id: string; name: string };
+    quantityPerUnit: number;
+    unitType: { id: string; name: string } | null;
+  }[]
   createdAt: Date
   updatedAt: Date
   assignees: { user: { id: string; name: string } }[]
@@ -88,6 +103,12 @@ export async function getTasksByProject(projectId: string): Promise<TaskWithRela
       subTasks: { select: { id: true, name: true, stage: true, status: true } },
       predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
       successors: { include: { successor: { select: { id: true, name: true } } } },
+      materials: {
+        include: {
+          material: { select: { id: true, name: true } },
+          unitType: { select: { id: true, name: true } }
+        }
+      },
     },
     orderBy: { orderIndex: "asc" },
   })
@@ -97,7 +118,7 @@ export async function getTasksByProject(projectId: string): Promise<TaskWithRela
   const needsRepair = tasks.length > 1 && tasks.every(t => t.orderIndex === 0)
   if (needsRepair) {
     await prisma.$transaction(
-      tasks.map((t, i) => 
+      tasks.map((t, i) =>
         prisma.task.update({ where: { id: t.id }, data: { orderIndex: i } })
       )
     )
@@ -154,7 +175,7 @@ export async function updateTaskStage(taskId: string, newStage: string) {
  */
 export async function reorderTasks(taskId: string, newStage: string, newIndex: number) {
   await requireAuth()
-  
+
   const task = await prisma.task.findUnique({ where: { id: taskId } })
   if (!task) throw new Error("Tarea no encontrada")
 
@@ -164,7 +185,7 @@ export async function reorderTasks(taskId: string, newStage: string, newIndex: n
   return prisma.$transaction(async (tx) => {
     // 1. Obtener todas las tareas de la(s) etapa(s) involucrada(s)
     const stagesToUpdate = oldStage === newStage ? [newStage] : [oldStage, newStage]
-    
+
     for (const stageName of stagesToUpdate) {
       const stageTasks = await tx.task.findMany({
         where: { projectId, stage: stageName },
@@ -186,13 +207,13 @@ export async function reorderTasks(taskId: string, newStage: string, newIndex: n
       } else if (stageName === newStage) {
         // Canal destino: insertar la tarea en el nuevo índice
         // Nota: 'task' es la versión antigua, necesitamos insertarla
-        const taskToInsert = { ...task, stage: newStage } as unknown as PrismaTaskWithRelations
-        updatedList.splice(newIndex, 0, taskToInsert)
+        const taskToInsert = { ...task, stage: newStage }
+        updatedList.splice(newIndex, 0, taskToInsert as any)
       }
 
       // 2. Aplicar nuevos índices secuenciales
       await Promise.all(
-        updatedList.map((t, i) => 
+        updatedList.map((t, i) =>
           tx.task.update({
             where: { id: t.id },
             data: { orderIndex: i, stage: stageName }
@@ -211,7 +232,7 @@ export async function updateTaskDates(taskId: string, startDate: Date, endDate: 
   // Guard: rechazar fechas nulas o inválidas
   if (!startDate || !endDate) throw new Error("Fechas inválidas")
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) throw new Error("Fecha inválida (NaN)")
-    
+
   const dataToUpdate: Record<string, string | number | Date> = { startDate, endDate }
   if (estimatedHours !== undefined) {
     dataToUpdate.estimatedHours = estimatedHours
@@ -221,12 +242,17 @@ export async function updateTaskDates(taskId: string, startDate: Date, endDate: 
   revalidatePath("/gantt")
 }
 
-// Helper de inclusión reutilizable para tareas con relaciones completas
 const taskInclude = {
   assignees: { include: { user: { select: { id: true, name: true } } } },
   subTasks: { select: { id: true, name: true, stage: true, status: true } },
   predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
   successors: { include: { successor: { select: { id: true, name: true } } } },
+  materials: {
+    include: {
+      material: { select: { id: true, name: true } },
+      unitType: { select: { id: true, name: true } }
+    }
+  }
 } as const
 
 function flattenTask(t: PrismaTaskWithRelations): TaskWithRelations {
@@ -375,7 +401,7 @@ export async function updateTaskQuantity(taskId: string, newQuantity: number) {
   // Actualizar cantidad y unitHours en este paso
   await prisma.task.update({
     where: { id: taskId },
-    data: { 
+    data: {
       quantity: newQuantity,
       estimatedHours: newTotalHours,
       endDate: newEnd
@@ -473,9 +499,12 @@ export async function createTask(data: {
   estimatedHours?: number
   unitEstimatedHours?: number
   quantity?: number
+  materialId?: string
+  materialQuantityPerUnit?: number
+  unitTypeId?: string
 }) {
   await requireAuth()
-  const { assigneeIds, predecessorIds, ...rest } = data
+  const { assigneeIds, predecessorIds, materialId, materialQuantityPerUnit, unitTypeId, ...rest } = data
   const task = await prisma.task.create({
     data: {
       ...rest,
@@ -485,6 +514,9 @@ export async function createTask(data: {
       predecessors: predecessorIds?.length
         ? { create: predecessorIds.map(id => ({ predecessorId: id })) }
         : undefined,
+      materials: materialId
+        ? { create: [{ materialId, quantityPerUnit: materialQuantityPerUnit || 0, unitTypeId: unitTypeId || null }] }
+        : undefined
     }
   })
 
@@ -505,14 +537,9 @@ export async function createTask(data: {
   const updatedTask = await prisma.task.update({
     where: { id: task.id },
     data: { orderIndex: count - 1 },
-    include: {
-      assignees: { include: { user: { select: { id: true, name: true } } } },
-      subTasks: { select: { id: true, name: true, stage: true, status: true } },
-      predecessors: { include: { predecessor: { select: { id: true, name: true } } } },
-      successors: { include: { successor: { select: { id: true, name: true } } } },
-    }
+    include: taskInclude
   })
-  
+
   const flattenedTask = {
     ...(updatedTask as unknown as PrismaTaskWithRelations),
     assignees: (updatedTask as unknown as PrismaTaskWithRelations).assignees.map(a => ({ id: a.user.id, name: a.user.name })),
@@ -523,23 +550,133 @@ export async function createTask(data: {
   return flattenedTask as unknown as TaskWithRelations
 }
 
+
+/** Obtiene un resumen de materiales para un proyecto o una tarea específica (agrupado por material) */
+export async function getProjectMaterialsSummary(projectId: string, taskId?: string) {
+  await requireAuth();
+
+  // 1. Obtener todas las tareas del proyecto con sus materiales
+  const allTasks = await prisma.task.findMany({
+    where: { projectId },
+    include: {
+      materials: {
+        include: {
+          material: true,
+          unitType: true
+        }
+      }
+    }
+  });
+
+  // 2. Definir qué tareas incluir
+  let targetTasks = allTasks;
+  if (taskId) {
+    const getBranchIds = (id: string): string[] => {
+      const children = allTasks.filter(t => t.parentId === id);
+      return [id, ...children.flatMap(c => getBranchIds(c.id))];
+    };
+    const branchIds = getBranchIds(taskId);
+    targetTasks = allTasks.filter(t => branchIds.includes(t.id));
+  }
+
+  // 3. Agrupar por material
+  const byMaterial: Record<string, {
+    name: string;
+    totalQty: number;
+    unit: string;
+    parts: { name: string; qtyPerUnit: number; pieceQty: number; total: number }[]
+  }> = {};
+
+  targetTasks.forEach(t => {
+    t.materials.forEach(m => {
+      if (!m.material) return;
+      const key = m.material.name;
+      if (!byMaterial[key]) {
+        byMaterial[key] = {
+          name: key,
+          totalQty: 0,
+          unit: m.unitType?.name || "uds",
+          parts: []
+        };
+      }
+      const qty = (t.quantity || 1) * (m.quantityPerUnit || 0);
+      byMaterial[key].totalQty += qty;
+      byMaterial[key].parts.push({
+        name: t.name,
+        qtyPerUnit: m.quantityPerUnit || 0,
+        pieceQty: t.quantity || 1,
+        total: qty
+      });
+    });
+  });
+
+  return Object.values(byMaterial);
+}
+
+export async function addMaterialToTask(data: {
+  taskId: string;
+  materialId: string;
+  quantityPerUnit: number;
+  unitTypeId: string | null;
+}) {
+  try {
+    await requireAuth();
+    const link = await prisma.taskMaterial.create({
+      data: {
+        taskId: data.taskId,
+        materialId: data.materialId,
+        quantityPerUnit: data.quantityPerUnit,
+        unitTypeId: data.unitTypeId
+      }
+    });
+    revalidatePath("/");
+    return { success: true, link };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al añadir material." };
+  }
+}
+
+export async function removeMaterialFromTask(linkId: string) {
+  try {
+    await requireAuth();
+    await prisma.taskMaterial.delete({ where: { id: linkId } });
+    revalidatePath("/");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al eliminar material." };
+  }
+}
+
+/** Obtiene todos los materiales únicos registrados */
+export async function getMaterials() {
+  await requireAuth();
+  return prisma.material.findMany({ orderBy: { name: "asc" } });
+}
+
+/** Obtiene todos los tipos de unidad registrados */
+export async function getUnitTypes() {
+  await requireAuth();
+  return prisma.unitType.findMany({ orderBy: { name: "asc" } });
+}
+
 /** Crea un nuevo proyecto — solo ADMIN */
 export async function createProject(data: { name: string; stage?: string }) {
   await requireAdmin()
-  const project = await prisma.project.create({ 
+  const project = await prisma.project.create({
     data: {
       ...data,
       stages: {
         create: [
           { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
           { name: "Ensambles", color: "#a855f7", order: 1 },
-          { name: "Piezas / Accesorios", color: "#9ca3af", order: 2 },
-          { name: "Pedido Externo", color: "#ef4444", order: 3 },
-          { name: "Fabricación Taller", color: "#3b82f6", order: 4 },
-          { name: "Listo", color: "#22c55e", order: 5 },
+          { name: "Pedido Externo", color: "#ef4444", order: 2 },
+          { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
+          { name: "Listo", color: "#22c55e", order: 4 },
         ]
       }
-    } 
+    }
   })
   revalidatePath("/")
   return project

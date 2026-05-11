@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import prisma from "@/lib/prisma";
 import { getMachineWithHierarchy } from "@/lib/actions/catalog-parts";
 import { MachineDetailClient, Machine } from "./MachineDetailClient";
 
@@ -6,7 +7,11 @@ export const dynamic = "force-dynamic";
 
 export default async function MachineDetailPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
-  const machine = await getMachineWithHierarchy(id);
+  const [machine, materials, unitTypes] = await Promise.all([
+    getMachineWithHierarchy(id),
+    prisma.material.findMany({ orderBy: { name: "asc" } }),
+    prisma.unitType.findMany({ orderBy: { name: "asc" } })
+  ]);
 
   if (!machine) {
     notFound();
@@ -22,7 +27,11 @@ export default async function MachineDetailPage(props: { params: Promise<{ id: s
       </div>
 
       {/* Aquí pasamos el objeto serializable completo (sin Date functions anidadas raras, que Prisma maneja bien si hay) */}
-      <MachineDetailClient initialMachine={machine as unknown as Machine} />
+      <MachineDetailClient 
+        initialMachine={machine as unknown as Machine} 
+        materials={materials}
+        unitTypes={unitTypes}
+      />
     </div>
   );
 }

@@ -30,19 +30,19 @@ export const TaskCard = memo(({
   onDeleteTask,
 }: TaskCardProps) => {
   const totalSubs = projectSubTasks.length;
-  
+
   // Cálculo de Progreso Real basado en Horas
   const subTasksHours = projectSubTasks.reduce((acc, s) => acc + (s.estimatedHours || 0), 0);
   const subTasksDoneHours = projectSubTasks.reduce((acc, s) => acc + (s.status === "HECHO" ? (s.estimatedHours || 0) : 0), 0);
-  
+
   const selfHours = task.estimatedHours || 0;
   const selfDoneHours = (task.progress / 100) * selfHours;
-  
+
   const totalGroupHours = subTasksHours + selfHours;
   const totalGroupDoneHours = subTasksDoneHours + selfDoneHours;
-  
-  const realProgress = totalGroupHours > 0 
-    ? Math.round((totalGroupDoneHours / totalGroupHours) * 100) 
+
+  const realProgress = totalGroupHours > 0
+    ? Math.round((totalGroupDoneHours / totalGroupHours) * 100)
     : task.progress;
 
   const completedSubs = projectSubTasks.filter(s => s.status === "HECHO").length;
@@ -51,8 +51,8 @@ export const TaskCard = memo(({
     e.stopPropagation();
     const result = await Swal.fire({
       title: "¿Eliminar tarea?",
-      text: task.isAssembly 
-        ? "¡Cuidado! Esto eliminará también todas las sub-piezas y tareas vinculadas." 
+      text: task.isAssembly
+        ? "¡Cuidado! Esto eliminará también todas las sub-piezas y tareas vinculadas."
         : "Esta acción no se puede deshacer.",
       icon: "warning",
       showCancelButton: true,
@@ -178,13 +178,13 @@ export const TaskCard = memo(({
                             </div>
                           )}
                         </li>
-                        
+
                         {/* 2do Nivel de Anidación */}
                         {isExpanded && subSubTasks.length > 0 && (
                           <div className="ml-4 border-l-2 border-gray-100 pl-2 mt-0.5 space-y-0.5 mb-1">
                             {subSubTasks.slice(0, 3).map(ss => (
-                              <div 
-                                key={ss.id} 
+                              <div
+                                key={ss.id}
                                 className="flex items-center gap-1.5 text-[9px] text-gray-400 hover:text-blue-500 transition-colors cursor-pointer"
                                 onClick={(e) => { e.stopPropagation(); onSelectTask(ss); }}
                               >
@@ -199,7 +199,7 @@ export const TaskCard = memo(({
                     );
                   })}
                   {!isExpanded && totalSubs > 2 && (
-                    <li 
+                    <li
                       className="text-[10px] text-gray-400 font-medium text-center pt-1 pb-0.5 cursor-pointer hover:text-gray-600 transition-colors"
                       onClick={(e) => onToggleExpand(task.id, e)}
                     >

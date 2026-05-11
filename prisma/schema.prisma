@@ -46,6 +46,17 @@ model Task {
   unitEstimatedHours Float?           @default(8)
   catalogOperationId String?
   catalogPartId      String?
+  
+  // Materiales (Múltiples)
+  materials          TaskMaterial[]
+
+  // Deprecated
+  materialId               String?
+  materialQuantityPerUnit  Float?    @default(0)
+  unitTypeId               String?
+  material                 Material? @relation("OldTaskMaterial", fields: [materialId], references: [id])
+  unitType                 UnitType? @relation("OldTaskUnit", fields: [unitTypeId], references: [id])
+
   parent             Task?            @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
   subTasks           Task[]           @relation("SubTasks")
   project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -64,7 +75,6 @@ model TaskDependency {
   @@unique([predecessorId, successorId])
 }
 
-/// * Tabla de asignación múltiple: tarea ↔ operarios
 model TaskAssignee {
   taskId String
   userId String
@@ -74,7 +84,6 @@ model TaskAssignee {
   @@id([taskId, userId])
 }
 
-/// * Etapas (columnas) dinámicas del tablero Kanban por proyecto
 model Stage {
   id        String  @id @default(uuid())
   name      String
@@ -86,9 +95,6 @@ model Stage {
   @@unique([projectId, name])
 }
 
-/// * 
-///  * Máquina o Producto Teórico (Ej: Decanter P6)
-///  * Actúa como la base o plantilla para crear un Proyecto.
 model MachineCatalog {
   id          String        @id @default(uuid())
   name        String
@@ -98,9 +104,6 @@ model MachineCatalog {
   parts       CatalogPart[]
 }
 
-/// * 
-///  * Pieza o Ensamble del Catálogo (Ej: Rotor, Sinfín, Eje, Chasis)
-///  * Al lanzarse a producción, se convierten en Task con isAssembly = true.
 model CatalogPart {
   id             String             @id @default(uuid())
   name           String
@@ -109,15 +112,23 @@ model CatalogPart {
   quantity       Int                @default(1)
   preferredStage String?
   deliveryDays   Int?               @default(0)
+  
+  // Materiales (Múltiples)
+  materials      CatalogPartMaterial[]
+
+  // Deprecated
+  materialId               String?
+  materialQuantityPerUnit  Float?    @default(0)
+  unitTypeId               String?
+  material                 Material? @relation("OldCatalogMaterial", fields: [materialId], references: [id])
+  unitType                 UnitType? @relation("OldCatalogUnit", fields: [unitTypeId], references: [id])
+
   operations     CatalogOperation[]
   machine        MachineCatalog     @relation(fields: [machineId], references: [id], onDelete: Cascade)
   parent         CatalogPart?       @relation("CatalogSubParts", fields: [parentId], references: [id], onDelete: Cascade)
   subParts       CatalogPart[]      @relation("CatalogSubParts")
 }
 
-/// * 
-///  * Tarea operativa estándar (Ej: Soldar Virola, Torno)
-///  * Al lanzarse a producción, se convierten en Task con isAssembly = false.
 model CatalogOperation {
   id             String      @id @default(uuid())
   name           String
@@ -128,9 +139,6 @@ model CatalogOperation {
   part           CatalogPart @relation(fields: [partId], references: [id], onDelete: Cascade)
 }
 
-/// *
-///  * Temporadas de horario de planta (ej. Invierno vs Verano).
-///  * Permite que el Gantt sepa cuántas horas tiene un día.
 model WorkSchedule {
   id          String   @id @default(uuid())
   name        String
@@ -142,9 +150,6 @@ model WorkSchedule {
   updatedAt   DateTime @updatedAt
 }
 
-/// *
-///  * Días festivos (Ferias, Navidades) de un año. 
-///  * El calculador de Gantt los saltará.
 model Holiday {
   id        String    @id @default(uuid())
   name      String
@@ -164,4 +169,46 @@ enum TaskStatus {
   CAMBIOS_SOLICITADOS
   HECHO
   CANCELADO
+}
+
+model CatalogPartMaterial {
+  id               String      @id @default(uuid())
+  catalogPartId    String
+  materialId       String
+  quantityPerUnit  Float       @default(0)
+  unitTypeId       String?
+  
+  catalogPart      CatalogPart @relation(fields: [catalogPartId], references: [id], onDelete: Cascade)
+  material         Material    @relation(fields: [materialId], references: [id])
+  unitType         UnitType?   @relation(fields: [unitTypeId], references: [id])
+}
+
+model TaskMaterial {
+  id               String      @id @default(uuid())
+  taskId           String
+  materialId       String
+  quantityPerUnit  Float       @default(0)
+  unitTypeId       String?
+  
+  task             Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  material         Material    @relation(fields: [materialId], references: [id])
+  unitType         UnitType?   @relation(fields: [unitTypeId], references: [id])
+}
+
+model Material {
+  id                 String                @id @default(uuid())
+  name               String                @unique
+  catalogParts       CatalogPart[]         @relation("OldCatalogMaterial")
+  tasks              Task[]                @relation("OldTaskMaterial")
+  catalogPartLinks   CatalogPartMaterial[]
+  taskLinks          TaskMaterial[]
+}
+
+model UnitType {
+  id                 String                @id @default(uuid())
+  name               String                @unique
+  catalogParts       CatalogPart[]         @relation("OldCatalogUnit")
+  tasks              Task[]                @relation("OldTaskUnit")
+  catalogPartLinks   CatalogPartMaterial[]
+  taskLinks          TaskMaterial[]
 }

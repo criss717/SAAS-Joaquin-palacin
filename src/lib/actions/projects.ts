@@ -24,10 +24,9 @@ export async function createEmptyProject(name: string, startDate: Date) {
           create: [
             { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
             { name: "Ensambles", color: "#a855f7", order: 1 },
-            { name: "Piezas / Accesorios", color: "#9ca3af", order: 2 },
-            { name: "Pedido Externo", color: "#ef4444", order: 3 },
-            { name: "Fabricación Taller", color: "#3b82f6", order: 4 },
-            { name: "Listo", color: "#22c55e", order: 5 },
+            { name: "Pedido Externo", color: "#ef4444", order: 2 },
+            { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
+            { name: "Listo", color: "#22c55e", order: 4 },
           ],
         },
       },
@@ -36,7 +35,7 @@ export async function createEmptyProject(name: string, startDate: Date) {
     // Cambiar automáticamente la cookie al proyecto recién creado
     const cookieStore = await cookies();
     cookieStore.set("activeProjectId", project.id, { path: "/", maxAge: 60 * 60 * 24 * 30 });
-    
+
     revalidatePath("/");
     revalidatePath("/gantt");
     return { success: true, project };
@@ -49,7 +48,7 @@ export async function createEmptyProject(name: string, startDate: Date) {
 export async function deleteProjectAction(projectId: string) {
   try {
     await prisma.project.delete({ where: { id: projectId } });
-    
+
     const cookieStore = await cookies();
     if (cookieStore.get("activeProjectId")?.value === projectId) {
       cookieStore.delete("activeProjectId");
@@ -86,7 +85,7 @@ export async function updateProjectAction(projectId: string, name: string) {
  */
 export async function shiftProjectDates(projectId: string, newStartDate: Date) {
   const { TimeEngine } = await import("@/lib/time-engine");
-  
+
   try {
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -109,7 +108,7 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
     const normalizeToWorkStart = (date: Date) => {
       const d = new Date(date);
       let attempts = 0;
-      
+
       // Mientras estemos en un periodo no laborable o fuera de horario (8 a 18), avanzamos
       while (attempts < 365) { // Seguridad contra bucles infinitos
         const schedule = engine.getScheduleForDate(d);
@@ -134,10 +133,10 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
     // 2. Normalizar el propio inicio del proyecto y calcular delta
     const newStart = normalizeToWorkStart(newStartRaw);
     const isForward = newStart >= oldStart;
-    const absDeltaHours = isForward 
+    const absDeltaHours = isForward
       ? engine.calculateBusinessHours(oldStart, newStart)
       : engine.calculateBusinessHours(newStart, oldStart);
-    
+
     const deltaHours = isForward ? absDeltaHours : -absDeltaHours;
 
     if (deltaHours === 0 && newStart.getTime() === oldStart.getTime()) {
@@ -152,14 +151,14 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
       tasksToUpdate.map(t => {
         const oldTaskStart = new Date(t.startDate);
         const oldTaskEnd = new Date(t.endDate);
-        
+
         let newTaskStart: Date;
         let newTaskEnd: Date;
 
         if (deltaHours >= 0) {
           // Desplazar inicio
           newTaskStart = normalizeToWorkStart(engine.addBusinessHours(oldTaskStart, deltaHours));
-          
+
           if ((t.deliveryDays || 0) > 0) {
             // Pedido externo: usa calendario genérico de proveedores (sin agosto)
             newTaskEnd = addExternalDays(newTaskStart, t.deliveryDays!);
@@ -192,9 +191,9 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
     });
 
     console.log(`[ShiftProject] Successfully moved ${movedCount} tasks for project ${projectId}`);
-    
+
     // Única revalidación al final para evitar timeouts/input stream errors
-    revalidatePath("/", "layout"); 
+    revalidatePath("/", "layout");
 
     return { success: true, movedTasks: movedCount };
   } catch (error) {

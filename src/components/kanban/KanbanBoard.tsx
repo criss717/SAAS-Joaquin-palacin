@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import {
   DragDropContext, Droppable, DropResult,
 } from "@hello-pangea/dnd";
-import { reorderTasks, updateTaskStatus, updateTaskProgress, TaskWithRelations } from "@/lib/actions/tasks";
+import { reorderTasks, updateTaskStatus, updateTaskProgress, TaskWithRelations, getProjectMaterialsSummary } from "@/lib/actions/tasks";
 import { reorderStages } from "@/lib/actions/stages";
 import { Settings2, Plus, X } from "lucide-react";
 import { TaskDetailModal } from "./TaskDetailModal";
@@ -16,14 +16,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { KanbanColumn } from "./KanbanColumn";
 import { GanttChart } from "@/components/gantt/GanttChart";
+import { toast } from "sonner";
 import { updateTaskDatesAndCascade } from "@/lib/actions/tasks";
 import { shiftProjectDates } from "@/lib/actions/projects";
-import { toast } from "sonner";
 import Swal from "sweetalert2";
-import { Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Loader2, Download, FileText } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { downloadMaterialReport } from "@/lib/utils/excel";
 
 type Stage = { id: string; name: string; color: string; order: number; projectId: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -35,13 +36,14 @@ type Props = {
   users: User[]
   isAdmin: boolean
   project: Project
+  materials: { id: string; name: string }[]
+  unitTypes: { id: string; name: string }[]
 }
 
 // Se eliminó la definición local redundante de TaskStatus
-const normalize = (s: string) => 
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const normalize = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, project }: Props) {
+export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, project, materials, unitTypes }: Props) {
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks);
   const [stages, setStages] = useState<Stage[]>(initialStages);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -56,13 +58,24 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
   const [preSelectedStage, setPreSelectedStage] = useState<string | undefined>(undefined);
   const [preSelectedParentId, setPreSelectedParentId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(true);
+
+  const handleDownloadAllMaterials = async () => {
+    try {
+      const summary = await getProjectMaterialsSummary(project.id);
+      await downloadMaterialReport(summary, project.name);
+      toast.success("Reporte de materiales generado.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al generar reporte.");
+    }
+  };
   const [viewMode, setViewMode] = useState<"kanban" | "gantt">("kanban");
   const [isShifting, setIsShifting] = useState(false);
 
   const handleShiftProject = async (newDate: string) => {
     if (!newDate) return;
     const date = new Date(newDate);
-    
+
     // Confirmación con SweetAlert2
     const result = await Swal.fire({
       title: '¿Desplazar proyecto?',
@@ -243,8 +256,17 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
           <div className="flex gap-2">
             {isAdmin && (
               <>
+                <Button
+                  variant="ghost"
+                  onClick={handleDownloadAllMaterials}
+                  className="h-8 rounded-lg border-t-2 border-b-0 border-l-0 border-r-0 border-orange-500 text-gray-500 hover:border-b-2 hover:border-l-2 hover:border-r-2 hover:text-orange-700 font-bold px-3 text-[10px] transition-all uppercase tracking-wider mr-1"
+                >
+                  <Download size={12} className="mr-1.5 text-orange-500" />
+                  Lista Materiales
+                </Button>
+
                 <Popover>
-                  <PopoverTrigger 
+                  <PopoverTrigger
                     disabled={isShifting}
                     className={cn(
                       buttonVariants({ variant: "ghost" }),
@@ -257,8 +279,8 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                   <PopoverContent className="z-1000 w-auto p-4 rounded-xl shadow-2xl border-gray-100" align="end">
                     <div className="flex flex-col gap-3">
                       <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nueva Fecha de Inicio</label>
-                      <input 
-                        type="date" 
+                      <input
+                        type="date"
                         defaultValue={format(new Date(project.startDate), "yyyy-MM-dd")}
                         onChange={(e) => {
                           if (e.target.value) handleShiftProject(e.target.value);
@@ -489,12 +511,14 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
             if (exists) return prev.map(t => t.id === updated.id ? updated : t);
             return [...prev, updated];
           });
-          // Solo cerramos si se actualizó la tarea principal seleccionada
-          if (updated.id === selectedTask?.id) {
-            setSelectedTask(null);
+          // Actualizar selectedTask con los nuevos datos sin cerrar el modal
+          if (selectedTask?.id === updated.id) {
+            setSelectedTask(updated);
           }
         }}
         onDeleteTask={handleDeleteTask}
+        materials={materials}
+        unitTypes={unitTypes}
       />
 
       <CreateTaskModal
@@ -517,6 +541,8 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
           setPreSelectedStage(undefined);
           setPreSelectedParentId(null);
         }}
+        materials={materials}
+        unitTypes={unitTypes}
       />
 
       {/* Modal gestión de etapas */}

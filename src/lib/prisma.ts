@@ -11,7 +11,7 @@ declare global {
   var prismaVersion: number | undefined
 }
 
-const SCHEMA_VERSION = 4; // Incrementamos para forzar recarga tras cambio de Holiday (startDate)
+const SCHEMA_VERSION = 6; // Incrementamos tras corregir schema name en .env
 
 const prisma = (globalThis.prisma && globalThis.prismaVersion === SCHEMA_VERSION && 'workSchedule' in globalThis.prisma) 
   ? globalThis.prisma 

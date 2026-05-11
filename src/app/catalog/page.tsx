@@ -1,10 +1,15 @@
 import { getMachines } from "@/lib/actions/catalog";
+import { getMaterials, getUnitTypes } from "@/lib/actions/tasks";
 import { CatalogClient } from "./CatalogClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function CatalogPage() {
-  const machines = await getMachines();
+  const [machines, materials, unitTypes] = await Promise.all([
+    getMachines(),
+    getMaterials(),
+    getUnitTypes()
+  ]);
 
   return (
     <div className="flex-1 w-full max-w-7xl mx-auto space-y-6 pt-6 px-4">
@@ -15,7 +20,11 @@ export default async function CatalogPage() {
         </p>
       </div>
 
-      <CatalogClient initialMachines={machines} />
+      <CatalogClient 
+        initialMachines={machines} 
+        initialMaterials={materials}
+        initialUnitTypes={unitTypes}
+      />
     </div>
   );
 }

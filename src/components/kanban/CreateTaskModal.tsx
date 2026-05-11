@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { createTask, TaskWithRelations } from "@/lib/actions/tasks";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { cn } from "@/lib/utils";
-import { Clock, Package, Plus, Layers, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2 } from "lucide-react";
+import { Clock, Package, Plus, Layers, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2, Trash2, Save, Percent, Hash } from "lucide-react";
+import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
-import { useCallback, useRef } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Stage = { id: string; name: string; color: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -28,6 +29,8 @@ type Props = {
   onClose: () => void
   onTaskCreated: (task: TaskWithRelations) => void
   initialParentId?: string | null
+  materials: { id: string; name: string }[]
+  unitTypes: { id: string; name: string }[]
 }
 
 function fromDateTimeInput(str: string): Date {
@@ -48,14 +51,13 @@ function toDateTimeLocalValue(d: Date | string): string {
 const normalize = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-/** Returns today's date at 08:00 AM as a datetime-local string (YYYY-MM-DDTHH:MM) */
 function getDefaultStartDate(): string {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T08:00`;
 }
 
-export function CreateTaskModal({ open, projectId, stages, users, allTasks, initialStage, onClose, onTaskCreated, initialParentId }: Props) {
+export function CreateTaskModal({ open, projectId, stages, users, allTasks, initialStage, onClose, onTaskCreated, initialParentId, materials, unitTypes }: Props) {
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [isAssembly, setIsAssembly] = useState(false);
@@ -70,7 +72,85 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   const [predecessorIds, setPredecessorIds] = useState<string[]>([]);
   const [parentId, setParentId] = useState<string | null>(initialParentId ?? null);
   const [quantity, setQuantity] = useState(1);
+  const [unitHours, setUnitHours] = useState(0);
+  const [tempMaterials, setTempMaterials] = useState<{ id: string; name: string; quantityPerUnit: number; unitTypeId: string; unitTypeName: string }[]>([]);
+  const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
+  const [newMaterialQty, setNewMaterialQty] = useState(0);
+  const [newUnitTypeId, setNewUnitTypeId] = useState<string | null>(null);
+  const [materialSearch, setMaterialSearch] = useState("");
   const [error, setError] = useState("");
+  const isClosingRef = useRef(false);
+
+  const hasChanges = () => {
+    return name.trim() !== "" ||
+      isAssembly !== false ||
+      estimatedHours > 0 ||
+      quantity !== 1 ||
+      startDate !== getDefaultStartDate() ||
+      endDate !== "" ||
+      selectedStatus !== "EN_PROCESO" ||
+      progress !== 0 ||
+      assigneeIds.length > 0 ||
+      predecessorIds.length > 0 ||
+      parentId !== null ||
+      tempMaterials.length > 0;
+  };
+
+  const handleCloseAttempt = async () => {
+    if (isClosingRef.current) return;
+
+    if (!hasChanges()) {
+      onClose();
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: '¿Salir sin guardar?',
+      text: "Tienes cambios sin guardar que se perderán.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, salir',
+      cancelButtonText: 'Seguir editando',
+      confirmButtonColor: '#ef4444',
+      heightAuto: false
+    });
+
+    if (result.isConfirmed) {
+      isClosingRef.current = true;
+      onClose();
+      setTimeout(() => { isClosingRef.current = false; }, 500);
+    }
+  };
+
+  const handleAddMaterial = () => {
+    if (!newMaterialId) return;
+    if (newMaterialQty <= 0) {
+      setError("La cantidad de material debe ser mayor a 0");
+      return;
+    }
+    if (!newUnitTypeId) {
+      setError("Seleccione una unidad de medida para añadir el material");
+      return;
+    }
+    setError("");
+    const mat = materials.find(m => m.id === newMaterialId);
+    const ut = unitTypes.find(u => u.id === newUnitTypeId);
+    if (!mat) return;
+    setTempMaterials([...tempMaterials, {
+      id: mat.id,
+      name: mat.name,
+      quantityPerUnit: newMaterialQty,
+      unitTypeId: newUnitTypeId || "",
+      unitTypeName: ut?.name || ""
+    }]);
+    setNewMaterialId(null);
+    setNewMaterialQty(0);
+    setNewUnitTypeId(null);
+  };
+
+  const handleRemoveMaterial = (materialId: string) => {
+    setTempMaterials(tempMaterials.filter(m => m.id !== materialId));
+  };
 
   const handlePredecessorChange = async (newIds: string[]) => {
     setPredecessorIds(newIds);
@@ -121,14 +201,15 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
       const end = fromDateTimeInput(endVal);
       if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
       const hours = await calculateHoursAction(start, end);
-      setEstimatedHours(hours);
+      setEstimatedHours(Number(hours.toFixed(1)));
+      setUnitHours(Number((hours / (quantity || 1)).toFixed(1)));
       setError("");
     } catch {
       // Silencioso
     } finally {
       setIsCalculating(false);
     }
-  }, []);
+  }, [quantity]);
 
   const onStartDateChange = (val: string) => {
     setStartDate(val);
@@ -144,6 +225,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
 
   const onHoursChange = (val: number) => {
     setEstimatedHours(val);
+    setUnitHours(Number((val / (quantity || 1)).toFixed(1)));
     if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
     calcEndTimer.current = setTimeout(() => handleCalculateEndDate(startDate, val), 500);
   };
@@ -160,9 +242,17 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   };
 
   const handleCreate = () => {
+    console.log("MATERIAL")
     if (!name.trim()) { setError("El nombre es obligatorio"); return; }
-    if (!startDate || !endDate) { setError("Las fechas son obligatorias"); return; }
+    if (!startDate) { setError("La fecha de inicio es obligatoria"); return; }
+    if (!endDate) { setError("La fecha de fin es obligatoria"); return; }
     if (new Date(endDate) < new Date(startDate)) { setError("La fecha de fin debe ser posterior al inicio"); return; }
+    if (estimatedHours <= 0) { setError("Las horas deben ser mayor a 0"); return; }
+    if (quantity < 1) { setError("La cantidad debe ser mayor a 0"); return; }
+    if (newMaterialId) {
+      setError("Material seleccionado no agregado.")
+      return
+    }
     setError("");
 
     startTransition(async () => {
@@ -180,287 +270,392 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
         predecessorIds,
         parentId: parentId || undefined,
         quantity: quantity,
-        unitEstimatedHours: estimatedHours / (quantity || 1)
+        unitEstimatedHours: unitHours > 0 ? unitHours : (estimatedHours / (quantity || 1)),
+        materialId: tempMaterials[0]?.id || undefined,
+        materialQuantityPerUnit: tempMaterials[0]?.quantityPerUnit || 0,
+        unitTypeId: tempMaterials[0]?.unitTypeId || undefined
       });
 
-      // Construir el objeto completo para el estado local
       const newTask: TaskWithRelations = {
-        id: task.id,
-        name: task.name,
-        stage: task.stage,
-        status: task.status as TaskStatus,
-        progress: task.progress,
-        isAssembly: task.isAssembly,
-        startDate: task.startDate,
-        endDate: task.endDate,
-        projectId: task.projectId,
-        parentId: task.parentId,
-        orderIndex: task.orderIndex,
+        ...task,
+        estimatedHours,
         assignees: users.filter((u: User) => assigneeIds.includes(u.id)).map((u: User) => ({ id: u.id, name: u.name })),
         subTasks: [],
         predecessors: predecessorIds.map((id: string) => ({ predecessor: { id, name: allTasks.find((t: TaskWithRelations) => t.id === id)?.name || "" } })),
         successors: [],
-        quantity: task.quantity,
-        unitEstimatedHours: task.unitEstimatedHours,
+        materials: task.materials // Usamos los materiales devueltos por el servidor
       };
 
       onTaskCreated(newTask);
-      // Reset
-      setName(""); setIsAssembly(false); setStartDate(getDefaultStartDate()); setEndDate(""); setEstimatedHours(8); setAssigneeIds([]);
-      setPredecessorIds([]); setParentId(null); setSelectedStatus("EN_PROCESO"); setProgress(0);
+      setName(""); setIsAssembly(false); setStartDate(getDefaultStartDate()); setEndDate(""); setEstimatedHours(0); setUnitHours(0); setAssigneeIds([]);
+      setPredecessorIds([]); setParentId(null); setSelectedStatus("EN_PROCESO"); setProgress(0); setQuantity(1);
+      setTempMaterials([]); setNewMaterialId(null); setNewMaterialQty(0); setNewUnitTypeId(null);
       onClose();
     });
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl">
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!open) handleCloseAttempt();
+    }}>
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl kanban-scroll py-6">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold text-gray-900 px-1">Nueva Tarea</DialogTitle>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+            {error && !error.includes("material") ? <p className="text-[12px] text-red-500 font-bold px-2 py-2 bg-red-50 rounded-xl  animate-pulse">{error}</p> : null}
+            <Button onClick={handleCreate} disabled={isPending || !name.trim()} className="rounded-xl bg-blue-100 hover:bg-blue-300 text-blue-600 font-bold px-8 cursor-pointer h-7 border-none ml-auto mr-4">
+              <Save size={14} className="mr-1" />{isPending ? "Creando..." : "Crear"}
+            </Button>
+          </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-2">
           {/* Columna Izquierda: Datos Básicos */}
-          <div className="space-y-5">
-            {/* Nombre */}
-            <div className="space-y-1.5 px-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Nombre *</Label>
+          <div className="space-y-4">
+            <div className="space-y-1.5 mb-4">
+              <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-1 mb-4">
+                <Plus size={12} className="text-blue-500" /> Nombre de la tarea / Pieza / Ensamble
+              </Label>
               <Input
-                placeholder="Ej: Mecanizado de tambor…"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleCreate()}
                 autoFocus
-                className="rounded-xl border-gray-200 h-11"
+                placeholder="Ej: Mecanizado de eje principal..."
+                value={name}
+                onChange={e => setName(e.target.value.toUpperCase())}
+                onKeyDown={e => e.key === "Enter" && handleCreate()}
+                className="text-sm h-10 rounded-xl border-gray-200 bg-gray-50/50 focus-visible:ring-gray-300 transition-all font-medium"
               />
             </div>
 
             {/* Tipo */}
-            <div className="flex items-center gap-3 px-1">
+            <div className="flex items-center gap-3 px-1 mb-2">
               <button
+                type="button"
                 onClick={() => setIsAssembly(false)}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase transition-all border-2 cursor-pointer ${!isAssembly ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200"}`}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold uppercase transition-all border-2 cursor-pointer ${!isAssembly ? "border-blue-200 bg-blue-50 text-blue-700 shadow-sm" : "border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200"}`}
               >
                 Pieza / Operación
               </button>
               <button
+                type="button"
                 onClick={() => setIsAssembly(true)}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 border-2 cursor-pointer ${isAssembly ? "border-purple-500 bg-purple-50 text-purple-700 shadow-sm" : "border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200"}`}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold uppercase transition-all flex items-center justify-center gap-1.5 border-2 cursor-pointer ${isAssembly ? "border-violet-200 bg-violet-50 text-violet-700 shadow-sm" : "border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200"}`}
               >
-                <Package size={14} /> Ensamble
+                <Package size={14} className={isAssembly ? "text-violet-600" : "text-gray-400"} /> Ensamble
               </button>
             </div>
 
-            {/* Etapa */}
-            <div className="space-y-1.5 px-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Etapa inicial</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {stages.map(s => (
+            {/* Progreso */}
+            <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 space-y-3">
+              <div className="flex justify-between items-center">
+                <Label className="text-[11px] font-black tracking-wider uppercase text-gray-800 flex items-center gap-2">
+                  <Percent size={12} className="text-blue-500" /> Progreso
+                </Label>
+                <span className="text-sm font-bold text-blue-600">{progress}%</span>
+              </div>
+
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 bg-blue-600`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+
+              <div className="flex justify-between gap-1">
+                {[0, 25, 50, 75, 100].map(val => (
                   <button
-                    key={s.id}
-                    onClick={() => setSelectedStage(s.name)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-2 cursor-pointer ${selectedStage === s.name ? "border-blue-400 bg-blue-50 text-blue-700 shadow-sm" : "border-gray-100 bg-white text-gray-400 hover:border-gray-200"}`}
+                    key={val}
+                    type="button"
+                    onClick={() => setProgress(val)}
+                    className={`flex-1 py-1 rounded-md border text-[10px] font-medium transition-all cursor-pointer ${progress === val ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}
                   >
-                    {s.name}
+                    {val}%
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Estimación, Cantidad y Fecha */}
-            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100 mx-1">
+            {/* Estimación, Cantidad y Fechas */}
+            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                  Cantidad
+                <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-center gap-1">
+                  <Hash size={12} className="text-blue-500" /> Cantidad
                 </Label>
-                <Input type="number" min="1" value={quantity} onChange={e => setQuantity(Math.max(1, Number(e.target.value)))} className="text-sm h-9 rounded-xl border-gray-200" />
+                <Input
+                  type="number"
+                  min="1"
+                  value={quantity || ""}
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    if (isNaN(val)) {
+                      setQuantity(0);
+                      return;
+                    }
+                    const q = Math.max(0, val);
+                    setQuantity(q);
+                    if (unitHours > 0 && q > 0) {
+                      const newTotal = Number((q * unitHours).toFixed(1));
+                      setEstimatedHours(newTotal);
+                      handleCalculateEndDate(startDate, newTotal);
+                    }
+                  }}
+                  className="text-sm h-9 rounded-xl text-gray-500 border-gray-200"
+                />
               </div>
+
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-center justify-between">
                   Horas Totales
-                  <button type="button" onClick={() => handleCalculateHours(startDate, endDate)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular horas según fechas">
-                    {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
-                  </button>
                 </Label>
-                <Input type="number" step="0.5" min="0" value={estimatedHours || ""} onChange={e => onHoursChange(Number(e.target.value))} className="text-sm h-9 rounded-xl border-gray-200" />
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={estimatedHours || ""}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value);
+                    if (isNaN(val)) {
+                      onHoursChange(0);
+                      return;
+                    }
+                    onHoursChange(Number(val.toFixed(1)));
+                  }}
+                  className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
+                />
+                <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x 1 ud)</p>
               </div>
+
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
-                <Input type="datetime-local" value={startDate} onChange={e => onStartDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
+                <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Inicio</Label>
+                <Input type="datetime-local" value={startDate} onChange={e => onStartDateChange(e.target.value)} className="text-sm h-9 text-gray-500 rounded-xl border-gray-200 px-2 w-full" />
               </div>
+
               <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-center justify-between">
                   <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
-                  <button type="button" onClick={() => handleCalculateEndDate(startDate, estimatedHours)} disabled={isCalculating} className="text-blue-500 hover:text-blue-700 disabled:opacity-50 cursor-pointer" title="Calcular fin según horas">
-                    {isCalculating ? <Loader2 size={12} className="animate-spin" /> : <Calculator size={12} />}
-                  </button>
                 </Label>
-                <Input type="datetime-local" value={endDate} onChange={e => onEndDateChange(e.target.value)} className="text-sm h-9 rounded-xl border-gray-200 px-2 w-full" />
+                <Input type="datetime-local" value={endDate} onChange={e => onEndDateChange(e.target.value)} className="text-sm h-9 text-gray-500 rounded-xl border-gray-200 px-2 w-full" />
               </div>
             </div>
 
-            {/* Estado Operativo y Progreso */}
-            <div className="bg-gray-50 p-4 rounded-3xl border border-gray-100 space-y-5 mx-1">
-              <div className="space-y-2">
-                <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Estado inicial</Label>
-                <div className="flex flex-wrap gap-2">
+            {/* Gestión de Materiales */}
+            <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-100 space-y-4 mx-1 mb-4 sm:h-[370px] h-full">
+              <Label className="text-[11px] font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+                <Package size={14} className="text-blue-500" /> Lista de Materiales Requeridos
+              </Label>
+
+              <div className="space-y-2 max-h-30 overflow-y-auto kanban-scroll pr-2">
+                {tempMaterials.map(m => (
+                  <div key={m.id} className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm transition-all hover:border-blue-200">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium text-gray-800">{m.name}</span>
+                      <span className="text-[10px] text-gray-500 font-medium">{m.quantityPerUnit} {m.unitTypeName || "uds"} x unidad</span>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => handleRemoveMaterial(m.id)} className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg cursor-pointer">
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                ))}
+                {tempMaterials.length === 0 && (
+                  <div className="text-center py-6 px-4 bg-white/50 rounded-xl border border-dashed border-gray-200">
+                    <Package size={24} className="mx-auto text-gray-300 mb-2" />
+                    <p className="text-xs text-gray-400 italic font-medium">No hay materiales asignados a esta tarea.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-gray-200 grid grid-cols-1 gap-4">
+                <div className="space-y-1.5 w-full">
+                  <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Añadir Material</Label>
+                  <Input
+                    placeholder="Buscar material..."
+                    value={materialSearch || materials.find(m => m.id === newMaterialId)?.name || ""}
+                    onChange={(e) => {
+                      setMaterialSearch(e.target.value.toUpperCase());
+                      if (!e.target.value) setNewMaterialId(null);
+                    }}
+                    onFocus={() => setMaterialSearch("")}
+                    className="h-9 text-xs bg-white border-gray-200"
+                  />
+                  {materialSearch && (
+                    <div className="absolute z-20 mt-1 w-full max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl animate-in fade-in slide-in-from-top-1 kanban-scroll">
+                      {materials
+                        .filter(m => normalize(m.name).includes(normalize(materialSearch)) && !tempMaterials.some(tm => tm.id === m.id))
+                        .map(m => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => { setNewMaterialId(m.id); setMaterialSearch(""); }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-gray-100 text-gray-700 transition-colors border-b last:border-0 border-gray-50"
+                          >
+                            {m.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-center items-center gap-3">
+                  <div className="flex-1">
+                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cant x Und</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={newMaterialQty || ""}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setNewMaterialQty(isNaN(val) ? 0 : Number(val.toFixed(2)));
+                      }}
+                      className="h-8 border-gray-200 rounded-xl text-xs font-medium"
+                    />
+                  </div>
+                  <div className="w-[160px]">
+                    <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tipo Unidad</Label>
+                    <Select value={unitTypes?.find(u => u.id === newUnitTypeId)?.name || ""} onValueChange={(val) => setNewUnitTypeId(val)}>
+                      <SelectTrigger className="h-8 rounded-xl border-gray-200 text-xs font-medium w-full">
+                        <SelectValue placeholder="seleccione..." />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl shadow-xl border-gray-100">
+                        {unitTypes.map(u => (
+                          <SelectItem key={u.id} value={u.id} className="text-xs">{u.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={handleAddMaterial} disabled={!newMaterialId || isPending} className="h-8 rounded-xl self-end cursor-pointer bg-blue-100 hover:bg-blue-300 text-blue-600 font-bold px-6 transition-all active:scale-95">
+                    {isPending ? <Loader2 size={16} className="animate-spin" /> : "+Agr. Material"}
+                  </Button>
+                </div>
+                {error.includes("material") && <p className="text-[12px] text-red-500 font-bold px-2 py-2 bg-red-50 rounded-xl  animate-pulse">{error}</p>}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Columna Derecha: Configuración y Relaciones */}
+          <div className="space-y-5">
+            {/* Estado y Etapa */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider">Estado Inicial</Label>
+                <div className="grid grid-cols-1 gap-1">
                   {[
-                    { id: 'APROBADO', label: 'Aprobado', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { id: 'EN_PROCESO', label: 'En proceso', icon: PlayCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
-                    { id: 'HECHO', label: 'Hecho', icon: CheckCheck, color: 'text-gray-600', bg: 'bg-gray-100' },
+                    { id: 'APROBADO', label: 'Aprobado', icon: CheckCircle2 },
+                    { id: 'EN_PROCESO', label: 'En proceso', icon: PlayCircle },
+                    { id: 'HECHO', label: 'Hecho', icon: CheckCheck },
                   ].map((status) => (
                     <button
                       key={status.id}
+                      type="button"
                       onClick={() => handleStatusChange(status.id as TaskStatus)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border-2 cursor-pointer ${selectedStatus === status.id
-                        ? `${status.bg} ${status.color} border-blue-400 shadow-sm`
-                        : 'bg-white text-gray-400 border-gray-100 hover:border-gray-200'
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${selectedStatus === status.id
+                        ? "bg-blue-50 text-blue-700 border-blue-200 shadow-sm"
+                        : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"
                         }`}
                     >
-                      <status.icon size={14} />
+                      <status.icon size={12} />
                       {status.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Progreso inicial</Label>
-                  <span className="text-xs font-bold text-blue-600">{progress}%</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${progress}%` }} />
-                  </div>
-                  <div className="flex gap-1.5">
-                    {[0, 50, 100].map(v => (
-                      <button
-                        key={v}
-                        onClick={() => setProgress(v)}
-                        className="px-2.5 py-1 rounded-lg border border-gray-200 text-[10px] font-bold hover:bg-white bg-transparent text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all cursor-pointer"
-                      >
-                        {v}%
-                      </button>
-                    ))}
-                  </div>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider">Etapa Inicial</Label>
+                <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto kanban-scroll">
+                  {stages.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelectedStage(s.name)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${selectedStage === s.name
+                        ? "bg-blue-50 text-blue-700 border-blue-200 shadow-sm"
+                        : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"
+                        }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
-            {error && <p className="text-sm text-red-500 font-bold px-1">{error}</p>}
-          </div>
 
-          {/* Columna Derecha: Relaciones */}
-          <div className="space-y-5">
             {/* Pertenece a: */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                <Layers size={12} className="text-purple-500" /> Pertenece a:
+            <div className="space-y-1.5 mt-4">
+              <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-1">
+                <Layers size={12} className="text-blue-500" /> Pertenece a:
               </Label>
-
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Buscar padre..."
-                  value={parentSearch}
-                  onChange={e => setParentSearch(e.target.value)}
-                  className="h-8 text-[11px] rounded-lg border-gray-100 flex-1"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-[10px]"
+              <Input
+                placeholder="Buscar pieza padre..."
+                value={parentSearch}
+                onChange={e => setParentSearch(e.target.value)}
+                className="h-8 text-[11px] rounded-lg border-gray-100"
+              />
+              <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1 kanban-scroll">
+                <button
+                  type="button"
                   onClick={() => setParentId(null)}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === null ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-white border-gray-100 text-gray-400"}`}
                 >
-                  Limpiar
-                </Button>
-              </div>
-
-              <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1">
-                {parentId === null && (
-                  <div className="text-[10px] text-gray-400 italic text-center py-1">Sin padre asignado</div>
-                )}
+                  (Ninguno)
+                </button>
                 {allTasks
                   .filter(t => normalize(t.name).includes(normalize(parentSearch)))
-                  .sort((a, b) => (a.id === parentId ? -1 : b.id === parentId ? 1 : 0))
                   .slice(0, 10)
-                  .map((t) => (
+                  .map(t => (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => setParentId(t.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id
-                        ? "bg-purple-50 border-purple-300 text-purple-700"
-                        : "bg-white border-gray-100 text-gray-500 hover:border-purple-200"
-                        }`}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"}`}
                     >
                       <div className="flex items-center gap-2 truncate">
-                        {t.isAssembly && <Package size={11} className="text-purple-400 shrink-0" />}
+                        {t.isAssembly && <Package size={11} className="text-blue-400 shrink-0" />}
                         <span className="truncate">{t.name}</span>
                       </div>
-                      {parentId === t.id && <CheckCircle2 size={11} className="shrink-0" />}
                     </button>
                   ))}
               </div>
             </div>
 
             {/* Dependencias */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+            <div className="space-y-1.5 mt-8">
+              <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider flex items-center gap-1">
                 <GitBranch size={12} className="text-blue-500" /> Depende de:
               </Label>
               <Input
                 placeholder="Buscar dependencia..."
                 value={depSearch}
                 onChange={e => setDepSearch(e.target.value)}
-                className="h-8 text-[11px] rounded-lg border-gray-100 mb-1"
+                className="h-8 text-[11px] rounded-lg border-gray-100"
               />
-              <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-2xl border border-gray-100">
-                {allTasks.length === 0 ? (
-                  <p className="text-[10px] text-gray-400 italic p-2">No hay tareas disponibles</p>
-                ) : (
-                  allTasks
-                    .filter(t => normalize(t.name).includes(normalize(depSearch)))
-                    .sort((a, b) => {
-                      const aSel = predecessorIds.includes(a.id);
-                      const bSel = predecessorIds.includes(b.id);
-                      if (aSel && !bSel) return -1;
-                      if (!aSel && bSel) return 1;
-                      return a.name.localeCompare(b.name);
-                    })
-                    .map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id])}
-                        className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${predecessorIds.includes(t.id)
-                          ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
-                          : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"
-                          }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {t.isAssembly && <Package size={12} className="text-purple-400 shrink-0" />}
-                          <span className="truncate">{t.name}</span>
-                        </div>
-                        {predecessorIds.includes(t.id) && <CheckCircle2 size={12} className="shrink-0" />}
-                      </button>
-                    ))
-                )}
+              <div className="max-h-32 overflow-y-auto bg-gray-50 p-2 rounded-xl border border-gray-100 space-y-1 kanban-scroll">
+                {allTasks
+                  .filter(t => normalize(t.name).includes(normalize(depSearch)))
+                  .map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id])}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${predecessorIds.includes(t.id) ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-white border-gray-100 text-gray-500 hover:border-gray-200"}`}
+                    >
+                      <span className="truncate">{t.name}</span>
+                      {predecessorIds.includes(t.id) && <CheckCircle2 size={11} />}
+                    </button>
+                  ))}
               </div>
             </div>
 
             {/* Asignados */}
-            <div className="space-y-1.5 px-1">
-              <Label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Asignados (opcional)</Label>
+            <div className="space-y-1.5 px-1 mt-8">
+              <Label className="text-[11px] font-black text-gray-800 uppercase tracking-wider">Asignados</Label>
               <div className="flex flex-wrap gap-2 items-center p-2 bg-gray-50 rounded-2xl border border-gray-100 min-h-[50px]">
-
-                {/* Botón para añadir */}
                 <Popover>
-                  <PopoverTrigger className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-400 hover:text-blue-500 hover:border-blue-200 hover:bg-white transition-all cursor-pointer">
+                  <PopoverTrigger className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-700 hover:text-gray-900 hover:border-gray-400 hover:bg-white transition-all cursor-pointer">
                     <UserPlus size={14} /> Añadir
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-0 rounded-2xl shadow-xl border-gray-100" align="start">
                     <Command>
                       <CommandInput placeholder="Buscar usuario..." className="text-xs h-10" />
-                      <CommandList>
+                      <CommandList className="kanban-scroll">
                         <CommandEmpty className="py-2 px-4 text-xs text-gray-500">No hay usuarios.</CommandEmpty>
                         <CommandGroup>
                           {users.map(u => (
@@ -471,12 +666,12 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                               className="cursor-pointer text-xs p-2"
                             >
                               <div className="flex items-center gap-2">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${assigneeIds.includes(u.id) ? "bg-blue-500" : "bg-gray-400"}`}>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${assigneeIds.includes(u.id) ? "bg-blue-600" : "bg-gray-400"}`}>
                                   {u.name.charAt(0)}
                                 </div>
                                 <span className="font-bold">{u.name.split(" ")[0]}</span>
                               </div>
-                              <Check className={cn("ml-auto h-3 w-3 text-blue-500", assigneeIds.includes(u.id) ? "opacity-100" : "opacity-0")} />
+                              <Check className={cn("ml-auto h-3 w-3 text-blue-600", assigneeIds.includes(u.id) ? "opacity-100" : "opacity-0")} />
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -485,33 +680,20 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                   </PopoverContent>
                 </Popover>
 
-                {/* Mostrar los seleccionados como badges */}
                 {assigneeIds.map(id => {
                   const u = users.find(x => x.id === id);
                   if (!u) return null;
                   return (
                     <div key={u.id} className="flex items-center gap-2 shrink-0 px-2.5 py-1.5 bg-white text-gray-700 rounded-xl border border-gray-200 text-xs font-bold shadow-sm">
-                      <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-[9px] font-black">{u.name.charAt(0)}</div>
+                      <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-black">{u.name.charAt(0)}</div>
                       {u.name.split(" ")[0]}
-                      <button onClick={(e) => { e.stopPropagation(); toggleAssignee(u.id); }} className="ml-1 text-gray-300 hover:text-red-500 transition-colors cursor-pointer text-sm">✕</button>
+                      <button type="button" onClick={() => toggleAssignee(u.id)} className="ml-1 text-gray-300 hover:text-red-500 transition-colors">✕</button>
                     </div>
                   );
                 })}
-
               </div>
             </div>
           </div>
-        </div>
-
-        <Separator className="my-2 bg-gray-100" />
-
-        <div className="flex gap-3 justify-end px-1 pb-1">
-          <Button variant="outline" onClick={onClose} disabled={isPending} className="rounded-xl border-gray-200 font-bold px-6 cursor-pointer">
-            Cancelar
-          </Button>
-          <Button onClick={handleCreate} disabled={isPending || !name.trim()} className="rounded-xl bg-blue-100 text-blue-600 font-black px-8 hover:bg-blue-200 transition-all cursor-pointer">
-            {isPending ? "Creando…" : <><Plus size={16} className="mr-2" strokeWidth={3} /> Crear Tarea</>}
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

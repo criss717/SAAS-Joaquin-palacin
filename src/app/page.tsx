@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { redirect } from "next/navigation";
-import { getProjects, getTasksByProject, getUsers } from "@/lib/actions/tasks";
+import { getProjects, getTasksByProject, getUsers, getMaterials, getUnitTypes } from "@/lib/actions/tasks";
 import { getStagesByProject } from "@/lib/actions/stages";
 import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 
@@ -17,13 +17,15 @@ export default async function DashboardPage() {
 
   const currentProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
-  const [tasks, stages, users] = currentProject
+  const [tasks, stages, users, materials, unitTypes] = currentProject
     ? await Promise.all([
       getTasksByProject(currentProject.id),
       getStagesByProject(currentProject.id),
       getUsers(),
+      getMaterials(),
+      getUnitTypes()
     ])
-    : [[], [], []];
+    : [[], [], [], [], []];
 
   const isAdmin = session.user?.role === "ADMIN";
 
@@ -37,6 +39,8 @@ export default async function DashboardPage() {
           users={users}
           isAdmin={isAdmin}
           project={currentProject}
+          materials={materials}
+          unitTypes={unitTypes}
         />
       </div>
     </div>

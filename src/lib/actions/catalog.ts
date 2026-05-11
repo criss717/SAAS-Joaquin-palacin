@@ -101,6 +101,82 @@ export async function updateMachine(id: string, name: string, description?: stri
 }
 
 // -----------------------------------------------------
+// GESTIÓN DE MATERIALES Y UNIDADES
+// -----------------------------------------------------
+
+export async function createMaterial(name: string) {
+  try {
+    await requireAdmin();
+    const material = await prisma.material.create({ data: { name } });
+    revalidatePath("/catalog");
+    return { success: true, material };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al crear material." };
+  }
+}
+
+export async function updateMaterial(id: string, name: string) {
+  try {
+    await requireAdmin();
+    await prisma.material.update({ where: { id }, data: { name } });
+    revalidatePath("/catalog");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al actualizar material." };
+  }
+}
+
+export async function deleteMaterial(id: string) {
+  try {
+    await requireAdmin();
+    await prisma.material.delete({ where: { id } });
+    revalidatePath("/catalog");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al eliminar material (podría estar en uso)." };
+  }
+}
+
+export async function createUnitType(name: string) {
+  try {
+    await requireAdmin();
+    const unitType = await prisma.unitType.create({ data: { name } });
+    revalidatePath("/catalog");
+    return { success: true, unitType };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al crear unidad." };
+  }
+}
+
+export async function updateUnitType(id: string, name: string) {
+  try {
+    await requireAdmin();
+    await prisma.unitType.update({ where: { id }, data: { name } });
+    revalidatePath("/catalog");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al actualizar unidad." };
+  }
+}
+
+export async function deleteUnitType(id: string) {
+  try {
+    await requireAdmin();
+    await prisma.unitType.delete({ where: { id } });
+    revalidatePath("/catalog");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al eliminar unidad (podría estar en uso)." };
+  }
+}
+
+// -----------------------------------------------------
 // MOTOR DE LANZAMIENTO A PRODUCCIÓN
 // -----------------------------------------------------
 
@@ -115,7 +191,13 @@ export async function launchMachineToProject(machineId: string, projectName: str
       include: {
         parts: {
           include: {
-            operations: { orderBy: { orderIndex: "asc" } }
+            operations: { orderBy: { orderIndex: "asc" } },
+            materials: {
+              include: {
+                material: true,
+                unitType: true
+              }
+            }
           }
         }
       }
@@ -155,10 +237,9 @@ export async function launchMachineToProject(machineId: string, projectName: str
           create: [
             { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
             { name: "Ensambles", color: "#a855f7", order: 1 },
-            { name: "Piezas / Accesorios", color: "#9ca3af", order: 2 },
-            { name: "Pedido Externo", color: "#ef4444", order: 3 },
-            { name: "Fabricación Taller", color: "#3b82f6", order: 4 },
-            { name: "Listo", color: "#22c55e", order: 5 },
+            { name: "Pedido Externo", color: "#ef4444", order: 2 },
+            { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
+            { name: "Listo", color: "#22c55e", order: 4 },
           ]
         }
       }
@@ -199,7 +280,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
         parentId: string | null;
         preferredStage?: string | null;
         deliveryDays?: number | null;
+        materialId?: string | null;
+        materialQuantityPerUnit?: number | null;
+        unitTypeId?: string | null;
         operations: CatalogOp[];
+        materials: any[];
       }
 
       const part = machine!.parts.find(p => p.id === partId) as CatalogPartWithOps | undefined;
@@ -234,7 +319,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
       // Crear la Tarea/Ensamble
       const newTaskPart = await prisma.task.create({
         data: {
-          name: part.name + (totalQuantity > 1 ? ` (x${totalQuantity})` : ""),
+          name: part.name,
           projectId: project.id,
           parentId: parentTaskId,
           isAssembly: isAssembly,
@@ -247,6 +332,13 @@ export async function launchMachineToProject(machineId: string, projectName: str
           quantity: totalQuantity,
           deliveryDays: part.deliveryDays || 0,
           catalogPartId: part.id,
+          materials: {
+            create: part.materials.map(m => ({
+              materialId: m.materialId,
+              quantityPerUnit: m.quantityPerUnit,
+              unitTypeId: m.unitTypeId
+            }))
+          }
         }
       });
 
@@ -295,13 +387,13 @@ export async function launchMachineToProject(machineId: string, projectName: str
     }
 
     // --- NUEVA LÓGICA: VINCULAR DEPENDENCIAS Y RECALCULAR TIEMPOS ---
-    
+
     // 1. Crear registros de Predecesores basados en la jerarquía
     for (const part of machine.parts) {
       if (part.parentId) {
         const childTaskId = partIdToTaskId.get(part.id);
         const parentTaskId = partIdToTaskId.get(part.parentId);
-        
+
         if (childTaskId && parentTaskId) {
           await prisma.taskDependency.create({
             data: {
@@ -316,7 +408,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
     // 2. Disparar recalibración de fechas en cascada desde las piezas base (hojas)
     // Buscamos tareas que tengan sucesoras pero NO tengan predecesoras propias.
     const leafTasks = await prisma.task.findMany({
-      where: { 
+      where: {
         projectId: project.id,
         successors: { some: {} },
         predecessors: { none: {} }
@@ -389,7 +481,17 @@ export async function importMachineFromExcel(formData: FormData) {
     });
 
     // 3. Mapeo temporal para jerarquías y filas
-    const rows: { nombre: string; cantidad: number; parentName: string; horas: number; etapa: string; plazo: number }[] = [];
+    const rows: {
+      nombre: string;
+      cantidad: number;
+      parentName: string;
+      horas: number;
+      etapa: string;
+      plazo: number;
+      material: string | null;
+      materialQty: number;
+      unitType: string | null;
+    }[] = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
       const item: Record<string, ExcelJS.CellValue> = {};
@@ -416,36 +518,78 @@ export async function importMachineFromExcel(formData: FormData) {
         parentName: item["pertenece a ensamble"]?.toString().trim() || "",
         horas: horas,
         etapa: normalizeStageName(item["etapa inicial"]?.toString() || ""),
-        plazo: plazoDias > 0 ? plazoDias : 7
+        plazo: plazoDias > 0 ? plazoDias : 7,
+        material: item.material?.toString().trim() || null,
+        materialQty: Number(item["material x unidad"]) || 0,
+        unitType: item["tipo unidad"]?.toString().trim() || null
       });
     });
 
-    // 4. Primera pasada: Crear CatalogPart y guardar IDs por nombre
+    // 3.5 Upsert de Materiales y Unidades encontrados en el Excel
+    const materialsInExcel = Array.from(new Set(rows.map(r => r.material).filter(Boolean)));
+    const unitsInExcel = Array.from(new Set(rows.map(r => r.unitType).filter(Boolean)));
+
+    const materialMap = new Map<string, string>();
+    for (const mName of materialsInExcel) {
+      const mat = await prisma.material.upsert({
+        where: { name: mName! },
+        update: {},
+        create: { name: mName! }
+      });
+      materialMap.set(mName!.toLowerCase(), mat.id);
+    }
+
+    const unitMap = new Map<string, string>();
+    for (const uName of unitsInExcel) {
+      const unit = await prisma.unitType.upsert({
+        where: { name: uName! },
+        update: {},
+        create: { name: uName! }
+      });
+      unitMap.set(uName!.toLowerCase(), unit.id);
+    }
+
+    // 4. Primera pasada: Crear CatalogPart y guardar IDs por nombre (Agregando materiales si el nombre se repite)
     const partNameToId = new Map<string, string>();
     for (const r of rows) {
-      const part = await prisma.catalogPart.create({
-        data: {
-          name: r.nombre,
-          machineId: machine.id,
-          quantity: r.cantidad,
-          preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Piezas / Accesorios",
-          deliveryDays: r.etapa === "Pedido Externo" ? r.plazo : 0,
-        }
-      });
-      // Guardamos la clave en minúsculas para comparaciones robustas
-      partNameToId.set(r.nombre.toLowerCase(), part.id);
+      const lowerName = r.nombre.toLowerCase();
+      let partId = partNameToId.get(lowerName);
 
-      // Crear operación por defecto solo si NO es "Pedido Externo"
-      if (r.etapa !== "Pedido Externo") {
-        await prisma.catalogOperation.create({
+      if (!partId) {
+        const part = await prisma.catalogPart.create({
           data: {
-            name: `Fabricar ${r.nombre}${r.cantidad > 1 ? ` (x${r.cantidad})` : ''}`,
-            partId: part.id,
-            // Guardamos las horas UNITARIAS en el catálogo. 
-            // El motor de lanzamiento las multiplicará por (part.quantity * projectQuantity)
-            estimatedHours: Math.max(0.1, r.horas),
-            preferredStage: "Fabricación Taller",
-            orderIndex: 0
+            name: r.nombre,
+            machineId: machine.id,
+            quantity: r.cantidad,
+            preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Piezas / Accesorios",
+            deliveryDays: r.etapa === "Pedido Externo" ? r.plazo : 0,
+          }
+        });
+        partId = part.id;
+        partNameToId.set(lowerName, partId);
+
+        // Crear operación por defecto solo si NO es "Pedido Externo"
+        if (r.etapa !== "Pedido Externo") {
+          await prisma.catalogOperation.create({
+            data: {
+              name: `Fabricar ${r.nombre}`,
+              partId: partId,
+              estimatedHours: Math.max(0.1, r.horas),
+              preferredStage: "Fabricación Taller",
+              orderIndex: 0
+            }
+          });
+        }
+      }
+
+      // Añadir material a la pieza (nueva o existente)
+      if (r.material) {
+        await prisma.catalogPartMaterial.create({
+          data: {
+            catalogPartId: partId,
+            materialId: materialMap.get(r.material.toLowerCase())!,
+            quantityPerUnit: r.materialQty,
+            unitTypeId: r.unitType ? unitMap.get(r.unitType.toLowerCase()) : null,
           }
         });
       }

@@ -237,7 +237,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
         {[
           { color: "bg-purple-500", label: "ENSAMBLE" },
           { color: "bg-blue-500", label: "EN PROCESO" },
-          { color: "bg-green-500", label: "LISTO" },
+          { color: "bg-green-500", label: "TERMINADO" },
           { color: "bg-amber-500", label: "CAMBIOS" },
           { color: "bg-gray-300", label: "BLOQUEADO/PENDIENTE" },
         ].map(({ color, label }) => (

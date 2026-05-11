@@ -21,11 +21,11 @@ Una plataforma de gestión de proyectos industrial y logística de alto rendimie
 ### 📊 Diagrama de Gantt Dinámico (Estilo Odoo)
 - **Agrupación Multifactor**: Visualiza el cronograma agrupado por **Etapa**, **Estado** o **Operario Responsable**.
 - **Interacción Directa**: Modifica fechas arrastrando barras de tareas o ensambles directamente en el diagrama.
-- **Sincronización Total**: Cualquier cambio en el Kanban (marcar como listo, cambiar progreso) se refleja al instante en el Gantt.
+- **Sincronización Total**: Cualquier cambio en el Kanban (marcar como Terminado, cambiar progreso) se refleja al instante en el Gantt.
 - **Control de Zoom (+ / −)**: Botones `ZoomIn` y `ZoomOut` que ajustan la escala temporal del diagrama entre **30%** y **300%**, con botón de reset al 100%.
 - **Enfoque automático**: Al cargar el gráfico, la vista se centra en la fecha de inicio de la primera tarea, eliminando meses vacíos anteriores al proyecto.
 - **Modos de vista**: Hora, Día, Semana y Mes con reset de zoom automático al cambiar de modo.
-- **Leyenda visual**: Código de colores para Ensamble, En Proceso, Listo, Cambios y Bloqueado/Pendiente.
+- **Leyenda visual**: Código de colores para Ensamble, En Proceso, Terminado, Cambios y Bloqueado/Pendiente.
 
 ### ⚙️ Motor de Programación Inteligente (TimeEngine)
 - **Calendario laboral configurable**: Horarios de trabajo con validez por fechas (`validFrom`) y festivos por proyecto.

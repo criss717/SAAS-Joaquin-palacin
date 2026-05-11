@@ -22,6 +22,7 @@ export interface Part {
   name: string;
   parentId: string | null;
   quantity: number;
+  estimatedHours: number;
   subParts: Part[];
   operations: Operation[];
   materials: {
@@ -62,6 +63,7 @@ export function MachineDetailClient({
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [editName, setEditName] = useState("");
   const [editQty, setEditQty] = useState(1);
+  const [editHours, setEditHours] = useState(0);
   // Para añadir nuevo material
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [newMaterialQty, setNewMaterialQty] = useState(0);
@@ -92,7 +94,13 @@ export function MachineDetailClient({
   const handleCreatePart = async () => {
     if (!name.trim()) return;
     setLoading(true);
-    const res = await createCatalogPart({ name, machineId: machine.id, parentId: selectedParentId || undefined, quantity: qtyOrDays });
+    const res = await createCatalogPart({ 
+      name, 
+      machineId: machine.id, 
+      parentId: selectedParentId || undefined, 
+      quantity: qtyOrDays,
+      estimatedHours: selectedParentId ? 0 : qtyOrDays // Si es top level, usamos el valor del input como horas
+    });
     if (res.success && res.part) {
       setMachine(prev => ({
         ...prev,
@@ -172,6 +180,7 @@ export function MachineDetailClient({
     setEditingPart(part);
     setEditName(part.name);
     setEditQty(part.quantity);
+    setEditHours(part.estimatedHours || 0);
     setNewMaterialId(null);
     setNewMaterialQty(0);
     setNewUnitTypeId(null);
@@ -230,7 +239,8 @@ export function MachineDetailClient({
     setLoading(true);
     const res = await updateCatalogPart(editingPart.id, machine.id, {
       name: editName,
-      quantity: editQty
+      quantity: editQty,
+      estimatedHours: editHours
     });
     if (res.success && res.part) {
       setMachine(prev => ({
@@ -238,7 +248,8 @@ export function MachineDetailClient({
         parts: prev.parts.map(p => p.id === editingPart.id ? {
           ...p,
           name: editName,
-          quantity: editQty
+          quantity: editQty,
+          estimatedHours: editHours
         } as Part : p)
       }));
       setIsEditModalOpen(false);
@@ -278,6 +289,9 @@ export function MachineDetailClient({
               <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                 <span className="truncate">{part.name}</span>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">x{part.quantity}</span>
+                {part.estimatedHours > 0 && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{part.estimatedHours} h.</span>
+                )}
               </div>
               {part.materials.length > 0 ? (
                 <div className="flex flex-wrap gap-1 mt-1">
@@ -441,8 +455,14 @@ export function MachineDetailClient({
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
-              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
+              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(parseFloat(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
             </div>
+            {!selectedParentId && (
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas (Mano de Obra)</Label>
+                <Input type="number" step="0.1" value={qtyOrDays} onChange={e => setQtyOrDays(parseFloat(e.target.value) || 0)} className="h-10 border-gray-200 rounded-xl" />
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
             <Button variant="outline" onClick={() => setIsPartModalOpen(false)} disabled={loading} className="rounded-xl border-gray-200 font-bold text-gray-500">Cancelar</Button>
@@ -462,6 +482,10 @@ export function MachineDetailClient({
             <div className="space-y-2">
               <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
               <Input type="number" min={1} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
+              <Input type="number" step="0.1" value={editHours} onChange={e => setEditHours(parseFloat(e.target.value) || 0)} className="h-10 border-gray-200 rounded-xl" />
             </div>
 
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">

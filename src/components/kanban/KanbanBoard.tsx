@@ -156,7 +156,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
 
     const newStage = destination.droppableId;
     const newIndex = destination.index;
-    const isDoneStage = newStage.toLowerCase().includes("listo") || newStage.toLowerCase().includes("terminado");
+    const isDoneStage = newStage.toLowerCase().includes("terminado") || newStage.toLowerCase().includes("terminado");
 
     // --- ACTUALIZACIÓN OPTIMISTA ---
     setTasks(prev => {
@@ -366,7 +366,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                   <SelectItem value="" className="text-xs">Todos los estados</SelectItem>
                   <SelectItem value="EN_PROCESO" className="text-xs">En Proceso</SelectItem>
                   <SelectItem value="CAMBIOS" className="text-xs">Cambios</SelectItem>
-                  <SelectItem value="HECHO" className="text-xs">Listo</SelectItem>
+                  <SelectItem value="HECHO" className="text-xs">Terminado</SelectItem>
                   <SelectItem value="APROBADO" className="text-xs">Aprobado</SelectItem>
                 </SelectContent>
               </Select>
@@ -464,7 +464,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                 className="flex gap-4 overflow-x-auto kanban-scroll-x pb-4 h-full pt-[130px]"
               >
                 {stages
-                  .filter(col => showDone || (!col.name.toLowerCase().includes("listo") && !col.name.toLowerCase().includes("terminado")))
+                  .filter(col => showDone || (!col.name.toLowerCase().includes("terminado") && !col.name.toLowerCase().includes("terminado")))
                   .map((column, colIndex) => {
                     const columnTasks = filteredTasks.filter(t => t.stage === column.name);
 

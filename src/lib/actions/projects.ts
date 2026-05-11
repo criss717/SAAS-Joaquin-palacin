@@ -26,7 +26,7 @@ export async function createEmptyProject(name: string, startDate: Date) {
             { name: "Ensambles", color: "#a855f7", order: 1 },
             { name: "Pedido Externo", color: "#ef4444", order: 2 },
             { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
-            { name: "Listo", color: "#22c55e", order: 4 },
+            { name: "Terminado", color: "#22c55e", order: 4 },
           ],
         },
       },

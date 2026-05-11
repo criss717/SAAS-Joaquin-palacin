@@ -45,7 +45,7 @@ async function main() {
       { name: 'Planeación', color: '#f59e0b', order: 0, projectId: project.id },
       { name: 'Pendiente', color: '#94a3b8', order: 1, projectId: project.id },
       { name: 'En Proceso', color: '#3b82f6', order: 2, projectId: project.id },
-      { name: 'Listo', color: '#22c55e', order: 3, projectId: project.id },
+      { name: 'Terminado', color: '#22c55e', order: 3, projectId: project.id },
     ],
   })
   console.log('Etapas Kanban creadas')

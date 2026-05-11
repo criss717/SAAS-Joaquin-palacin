@@ -25,9 +25,9 @@ const NORM_STAGES: Record<string, string> = {
   "planeacion": "Planeación y Diseño",
   "diseño": "Planeación y Diseño",
   "diseno": "Planeación y Diseño",
-  "piezas": "Piezas / Accesorios",
-  "accesorios": "Piezas / Accesorios",
-  "pendiente": "Piezas / Accesorios",
+  "piezas": "Fabricación Taller",
+  "accesorios": "Fabricación Taller",
+  "pendiente": "Fabricación Taller",
   "pedido": "Pedido Externo",
   "externo": "Pedido Externo",
   "proveedor": "Pedido Externo",
@@ -35,17 +35,17 @@ const NORM_STAGES: Record<string, string> = {
   "fabricacion": "Fabricación Taller",
   "ensambles": "Ensambles",
   "ensamble": "Ensambles",
-  "listo": "Listo",
-  "terminado": "Listo"
+  "terminado": "Terminado",
+  "listo": "Terminado"
 };
 
 function normalizeStageName(input: string): string {
   const low = (input || "").toLowerCase().trim();
-  if (!low) return "Piezas / Accesorios";
+  if (!low) return "Fabricación Taller";
   for (const [key, val] of Object.entries(NORM_STAGES)) {
     if (low.includes(key)) return val;
   }
-  return "Piezas / Accesorios";
+  return "Fabricación Taller";
 }
 
 export async function getMachines() {
@@ -239,7 +239,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
             { name: "Ensambles", color: "#a855f7", order: 1 },
             { name: "Pedido Externo", color: "#ef4444", order: 2 },
             { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
-            { name: "Listo", color: "#22c55e", order: 4 },
+            { name: "Terminado", color: "#22c55e", order: 4 },
           ]
         }
       }
@@ -254,11 +254,12 @@ export async function launchMachineToProject(machineId: string, projectName: str
       const part = machine!.parts.find(p => p.id === pId);
       if (!part) return 0;
 
+      const ownHours = (part as any).estimatedHours || 0;
       const directOpsHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
       const childrenParts = machine!.parts.filter(p => p.parentId === pId);
       const childrenHours = childrenParts.reduce((acc, child) => acc + getRecursiveHours(child.id), 0);
 
-      return directOpsHours + childrenHours;
+      return ownHours + directOpsHours + childrenHours;
     }
 
     // Identificar qué piezas son "Ensambles Reales" (tienen sub-piezas)
@@ -285,6 +286,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
         unitTypeId?: string | null;
         operations: CatalogOp[];
         materials: any[];
+        estimatedHours: number;
       }
 
       const part = machine!.parts.find(p => p.id === partId) as CatalogPartWithOps | undefined;
@@ -296,8 +298,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
       // Cálculo de horas para este nodo (Ensambles suman recursivamente, piezas simples usan sus operaciones)
       const isAssembly = parentPartIds.has(part.id);
 
-      // El tiempo unitario es la suma de operaciones directas o recursivas para UNA unidad
-      const unitEstimatedHours = isAssembly ? getRecursiveHours(part.id) : part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+      // El tiempo unitario es la suma de (horas propias de la pieza) + (operaciones directas o recursivas)
+      const partOpsHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
+      const unitEstimatedHours = isAssembly
+        ? getRecursiveHours(part.id)
+        : (part.estimatedHours || 0) + partOpsHours;
 
       // Las horas estimadas totales se escalan por la cantidad total
       let finalEstimatedHours = (unitEstimatedHours || 8) * totalQuantity;
@@ -323,7 +328,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
           projectId: project.id,
           parentId: parentTaskId,
           isAssembly: isAssembly,
-          stage: part.preferredStage || "Pendiente",
+          stage: part.preferredStage || "Fabricación Taller",
           status: "EN_PROCESO",
           startDate: projectStartDate,
           endDate: taskEndDate,
@@ -344,33 +349,34 @@ export async function launchMachineToProject(machineId: string, projectName: str
 
       partIdToTaskId.set(part.id, newTaskPart.id);
 
-      // Clonar operaciones de esta pieza en cascada
-      let opsStartDate = new Date(projectStartDate);
-      for (const op of part.operations) {
-        // La operación también se escala por la cantidad total
-        const opUnitHours = op.estimatedHours || 8;
-        const opTotalHours = opUnitHours * totalQuantity;
-        const opsEndDate = engine.addBusinessHours(opsStartDate, opTotalHours);
+      // Clonar operaciones de esta pieza en cascada - SOLO si no es Fabricación Taller o es un Ensamble con lógica propia
+      if (newTaskPart.stage !== "Fabricación Taller") {
+        let opsStartDate = new Date(projectStartDate);
+        for (const op of part.operations) {
+          const opUnitHours = op.estimatedHours || 8;
+          const opTotalHours = opUnitHours * totalQuantity;
+          const opsEndDate = engine.addBusinessHours(opsStartDate, opTotalHours);
 
-        await prisma.task.create({
-          data: {
-            name: op.name,
-            projectId: project.id,
-            parentId: newTaskPart.id,
-            isAssembly: false,
-            stage: op.preferredStage || part.preferredStage || "Pendiente",
-            status: "EN_PROCESO",
-            progress: 0,
-            startDate: opsStartDate,
-            endDate: opsEndDate,
-            estimatedHours: opTotalHours,
-            unitEstimatedHours: opUnitHours,
-            quantity: totalQuantity,
-            catalogPartId: part.id,
-            catalogOperationId: op.id,
-          }
-        });
-        opsStartDate = opsEndDate;
+          await prisma.task.create({
+            data: {
+              name: op.name,
+              projectId: project.id,
+              parentId: newTaskPart.id,
+              isAssembly: false,
+              stage: op.preferredStage || part.preferredStage || "Fabricación Taller",
+              status: "EN_PROCESO",
+              progress: 0,
+              startDate: opsStartDate,
+              endDate: opsEndDate,
+              estimatedHours: opTotalHours,
+              unitEstimatedHours: opUnitHours,
+              quantity: totalQuantity,
+              catalogPartId: part.id,
+              catalogOperationId: op.id,
+            }
+          });
+          opsStartDate = opsEndDate;
+        }
       }
 
       // Clonar piezas hijas recursivamente
@@ -561,25 +567,13 @@ export async function importMachineFromExcel(formData: FormData) {
             name: r.nombre,
             machineId: machine.id,
             quantity: r.cantidad,
-            preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Piezas / Accesorios",
+            preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Fabricación Taller",
             deliveryDays: r.etapa === "Pedido Externo" ? r.plazo : 0,
+            estimatedHours: r.etapa !== "Pedido Externo" ? Math.max(0, r.horas) : 0,
           }
         });
         partId = part.id;
         partNameToId.set(lowerName, partId);
-
-        // Crear operación por defecto solo si NO es "Pedido Externo"
-        if (r.etapa !== "Pedido Externo") {
-          await prisma.catalogOperation.create({
-            data: {
-              name: `Fabricar ${r.nombre}`,
-              partId: partId,
-              estimatedHours: Math.max(0.1, r.horas),
-              preferredStage: "Fabricación Taller",
-              orderIndex: 0
-            }
-          });
-        }
       }
 
       // Añadir material a la pieza (nueva o existente)

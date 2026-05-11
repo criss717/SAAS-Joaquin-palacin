@@ -112,6 +112,7 @@ model CatalogPart {
   quantity       Int                @default(1)
   preferredStage String?
   deliveryDays   Int?               @default(0)
+  estimatedHours Float?             @default(0)
   
   // Materiales (Múltiples)
   materials      CatalogPartMaterial[]

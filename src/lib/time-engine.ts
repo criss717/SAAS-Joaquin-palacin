@@ -137,7 +137,17 @@ export class TimeEngine {
   }
 
   getScheduleForDate(date: Date): WorkSchedule | null {
-    return this.schedules.find(s => date >= s.validFrom && date <= s.validUntil) || null;
+    const matching = this.schedules.filter(s => date >= s.validFrom && date <= s.validUntil);
+    if (matching.length === 0) return null;
+    if (matching.length === 1) return matching[0];
+
+    // Si hay múltiples temporadas en la misma fecha, preferir la que tenga este día como laborable
+    const day = date.getDay();
+    const best = matching.find(s => {
+      const workingDays = JSON.parse(s.workingDays) as number[];
+      return workingDays.includes(day);
+    });
+    return best || matching[0];
   }
 
   isHoliday(date: Date): boolean {

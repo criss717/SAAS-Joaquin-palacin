@@ -30,21 +30,30 @@ export async function upsertWorkSchedule(data: {
   shifts: { start: string; end: string }[];
 }) {
   try {
-    // 1. Validar solapamiento de fechas
+    // 1. Validar solapamiento: solo rechazar si hay otra temporada con los MISMOS días en el mismo rango de fechas
     const existing = await prisma.workSchedule.findMany({
       where: {
         id: data.id ? { not: data.id } : undefined,
-        OR: [
-          {
-            validFrom: { lte: data.validUntil },
-            validUntil: { gte: data.validFrom }
-          }
-        ]
+        validFrom: { lte: data.validUntil },
+        validUntil: { gte: data.validFrom }
       }
     });
 
-    if (existing.length > 0) {
-      return { success: false, error: `Error: La fecha solapa con la temporada "${existing[0].name}"` };
+    // Filtrar solo los que compartan algún día laborable con el nuevo horario
+    const newDays = new Set(data.workingDays);
+    const conflicting = existing.filter(s => {
+      const existingDays = JSON.parse(s.workingDays) as number[];
+      return existingDays.some((d: number) => newDays.has(d));
+    });
+
+    if (conflicting.length > 0) {
+      const days = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+      const sharedDays = [...newDays].filter((d: number) => {
+        const existingDays = JSON.parse(conflicting[0].workingDays) as number[];
+        return existingDays.includes(d);
+      });
+      const dayNames = sharedDays.map((d: number) => days[d]).join(", ");
+      return { success: false, error: `Los días ${dayNames} ya están cubiertos por "${conflicting[0].name}" en ese rango de fechas.` };
     }
 
     const payload = {
@@ -115,6 +124,28 @@ export async function createHoliday(name: string, startDate: Date, endDate?: Dat
   } catch (error) {
     console.error(error);
     return { success: false, error: "Error al crear el festivo." };
+  }
+}
+
+export async function createHolidayBatch(name: string, dates: { start: Date; end?: Date }[]) {
+  try {
+    await requireAdmin();
+    
+    await prisma.holiday.createMany({
+      data: dates.map(d => {
+        const s = new Date(d.start);
+        s.setHours(0, 0, 0, 0);
+        const e = d.end ? new Date(d.end) : new Date(d.start);
+        e.setHours(23, 59, 59, 999);
+        return { name, startDate: s, endDate: e };
+      })
+    });
+    
+    revalidatePath("/admin/schedule");
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, error: "Error al crear los festivos." };
   }
 }
 

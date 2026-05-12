@@ -36,7 +36,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   // Búsqueda y Paginación
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 7;
+  const itemsPerPage = 8;
 
   const openInviteModal = () => {
     setName("");
@@ -188,7 +188,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 ">
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-between gap-4">
         <div className="flex gap-4">
           <div className="bg-blue-50 text-blue-800 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
@@ -217,7 +217,7 @@ export function UserClient({ initialUsers, currentUserId }: { initialUsers: User
         </Button>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[560px]">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[650px]">
         <div className="flex-1 overflow-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">

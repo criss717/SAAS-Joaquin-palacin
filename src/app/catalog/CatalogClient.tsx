@@ -49,7 +49,9 @@ export function CatalogClient({
   const [materialSearch, setMaterialSearch] = useState("");
   const [unitSearch, setUnitSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
+  const [matsPage, setMatsPage] = useState(1);
+  const [unitsPage, setUnitsPage] = useState(1);
+  const itemsPerPage = 8;
 
   const handleOpenLaunch = (machineId: string) => {
     setSelectedMachineToLaunch(machineId);
@@ -129,8 +131,8 @@ export function CatalogClient({
     formData.append("file", file);
     formData.append("machineName", machineName);
 
-const res = await importMachineFromExcel(formData);
-    
+    const res = await importMachineFromExcel(formData);
+
     if (res.success && res.machine) {
       setMachines([res.machine, ...machines]);
       toast.success(`Catálogo "${res.machine.name}" importado correctamente.`);
@@ -558,6 +560,7 @@ const res = await importMachineFromExcel(formData);
         </>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
           {/* Columna Materiales */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -569,8 +572,8 @@ const res = await importMachineFromExcel(formData);
                   <Input
                     placeholder="Buscar material..."
                     value={materialSearch}
-                    onChange={e => setMaterialSearch(e.target.value)}
-                    className="h-8 text-xs w-32 border-gray-100 bg-gray-50 rounded-lg pl-7"
+                    onChange={e => { setMaterialSearch(e.target.value); setMatsPage(1); }}
+                    className="h-8 text-xs w-full border-gray-100 bg-gray-50 rounded-lg pl-7"
                   />
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 </div>
@@ -579,27 +582,55 @@ const res = await importMachineFromExcel(formData);
                 </Button>
               </div>
             </div>
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="max-h-[500px] overflow-y-auto divide-y divide-gray-50 kanban-scroll">
-                {materials.filter(m => m.name.toLowerCase().includes(materialSearch.toLowerCase())).length === 0 ? (
-                  <div className="p-8 text-center text-gray-400 text-sm italic">Sin resultados</div>
-                ) : (
-                  materials.filter(m => m.name.toLowerCase().includes(materialSearch.toLowerCase())).map(m => (
-                    <div key={m.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors group">
-                      <span className="text-sm font-bold text-gray-700">{m.name}</span>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleEditMaterial(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                          <Edit2 size={14} />
-                        </button>
-                        <button onClick={() => handleDeleteMaterial(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+
+            {(() => {
+              const filtered = materials.filter(m => m.name.toLowerCase().includes(materialSearch.toLowerCase()));
+              const totalMatsPages = Math.ceil(filtered.length / itemsPerPage);
+              const paginated = filtered.slice((matsPage - 1) * itemsPerPage, matsPage * itemsPerPage);
+
+              return (
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
+                  <div className="flex-1 overflow-y-auto divide-y divide-gray-50 kanban-scroll">
+                    {paginated.length === 0 ? (
+                      <div className="flex items-center justify-center h-full min-h-[540px] text-gray-400 text-sm italic">Sin resultados</div>
+                    ) : (
+                      paginated.map(m => (
+                        <div key={m.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-gray-50/70 transition-colors group">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center">
+                              <Package size={14} className="text-orange-500" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700">{m.name}</span>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleEditMaterial(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => handleDeleteMaterial(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {totalMatsPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 py-3 border-t border-gray-100 px-4">
+                      <Button variant="outline" size="sm" onClick={() => setMatsPage(p => Math.max(1, p - 1))} disabled={matsPage === 1} className="h-7 w-7 p-0 rounded-lg border-gray-200 text-gray-500">
+                        <ChevronLeft size={14} />
+                      </Button>
+                      {Array.from({ length: totalMatsPages }, (_, i) => i + 1).map(p => (
+                        <button key={p} onClick={() => setMatsPage(p)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${matsPage === p ? 'bg-orange-50 text-orange-600' : 'text-gray-400 hover:bg-gray-100'}`}>{p}</button>
+                      ))}
+                      <Button variant="outline" size="sm" onClick={() => setMatsPage(p => Math.min(totalMatsPages, p + 1))} disabled={matsPage === totalMatsPages} className="h-7 w-7 p-0 rounded-lg border-gray-200 text-gray-500">
+                        <ChevronRight size={14} />
+                      </Button>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Columna Unidades */}
@@ -613,8 +644,8 @@ const res = await importMachineFromExcel(formData);
                   <Input
                     placeholder="Buscar unidad..."
                     value={unitSearch}
-                    onChange={e => setUnitSearch(e.target.value)}
-                    className="h-8 text-xs w-32 border-gray-100 bg-gray-50 rounded-lg pl-7"
+                    onChange={e => { setUnitSearch(e.target.value); setUnitsPage(1); }}
+                    className="h-8 text-xs w-full border-gray-100 bg-gray-50 rounded-lg pl-7"
                   />
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 </div>
@@ -623,27 +654,55 @@ const res = await importMachineFromExcel(formData);
                 </Button>
               </div>
             </div>
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="max-h-[500px] overflow-y-auto divide-y divide-gray-50 kanban-scroll">
-                {unitTypes.filter(u => u.name.toLowerCase().includes(unitSearch.toLowerCase())).length === 0 ? (
-                  <div className="p-8 text-center text-gray-400 text-sm italic">Sin resultados</div>
-                ) : (
-                  unitTypes.filter(u => u.name.toLowerCase().includes(unitSearch.toLowerCase())).map(u => (
-                    <div key={u.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors group">
-                      <span className="text-sm font-bold text-gray-700">{u.name}</span>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleEditUnit(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                          <Edit2 size={14} />
-                        </button>
-                        <button onClick={() => handleDeleteUnit(u.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+
+            {(() => {
+              const filtered = unitTypes.filter(u => u.name.toLowerCase().includes(unitSearch.toLowerCase()));
+              const totalUnitsPages = Math.ceil(filtered.length / itemsPerPage);
+              const paginated = filtered.slice((unitsPage - 1) * itemsPerPage, unitsPage * itemsPerPage);
+
+              return (
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
+                  <div className="flex-1 overflow-y-auto divide-y divide-gray-50 kanban-scroll">
+                    {paginated.length === 0 ? (
+                      <div className="flex items-center justify-center h-full min-h-[540px] text-gray-400 text-sm italic">Sin resultados</div>
+                    ) : (
+                      paginated.map(u => (
+                        <div key={u.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-gray-50/70 transition-colors group">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                              <Scale size={14} className="text-blue-500" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700">{u.name}</span>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleEditUnit(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => handleDeleteUnit(u.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {totalUnitsPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 py-3 border-t border-gray-100 px-4">
+                      <Button variant="outline" size="sm" onClick={() => setUnitsPage(p => Math.max(1, p - 1))} disabled={unitsPage === 1} className="h-7 w-7 p-0 rounded-lg border-gray-200 text-gray-500">
+                        <ChevronLeft size={14} />
+                      </Button>
+                      {Array.from({ length: totalUnitsPages }, (_, i) => i + 1).map(p => (
+                        <button key={p} onClick={() => setUnitsPage(p)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${unitsPage === p ? 'bg-blue-50 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}>{p}</button>
+                      ))}
+                      <Button variant="outline" size="sm" onClick={() => setUnitsPage(p => Math.min(totalUnitsPages, p + 1))} disabled={unitsPage === totalUnitsPages} className="h-7 w-7 p-0 rounded-lg border-gray-200 text-gray-500">
+                        <ChevronRight size={14} />
+                      </Button>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

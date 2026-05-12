@@ -713,7 +713,11 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   }}
                   className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
                 />
-                <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x 1 ud)</p>
+                {task.deliveryDays ? (
+                <p className="text-[9px] text-gray-500 mt-1">(Pedido externo - {task.deliveryDays} días)</p>
+              ) : (
+                <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x {localQuantity} ud)</p>
+              )}
               </div>
 
               <div className="space-y-1.5">
@@ -807,8 +811,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad x Unidad</Label>
                     <Input
                       type="number"
-                      step="0.1"
-                      min={1}
+                      step="0.01"
+                      min="0.01"
                       value={newMaterialQty || ""}
                       onChange={e => {
                         const val = parseFloat(e.target.value);

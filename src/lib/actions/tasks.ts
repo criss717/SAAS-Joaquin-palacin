@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/authOptions"
 import { TaskStatus } from "@prisma/client"
-import { addExternalDays } from "@/lib/external-calendar"
+import { addExternalDays, addCalendarDays } from "@/lib/external-calendar"
 
 export type TaskAssignee = { id: string; name: string }
 
@@ -356,7 +356,7 @@ export async function updateTaskDatesAndCascade(
     const hours = currentTask.estimatedHours ?? 8
     const isExternal = (currentTask.deliveryDays || 0) > 0
     const newEnd = isExternal
-      ? addExternalDays(new Date(newStart), currentTask.deliveryDays!)
+      ? addCalendarDays(new Date(newStart), currentTask.deliveryDays!)
       : engine.addBusinessHours(new Date(newStart), hours)
 
     // Actualizar en BD
@@ -670,10 +670,11 @@ export async function createProject(data: { name: string; stage?: string }) {
       stages: {
         create: [
           { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
-          { name: "Ensambles", color: "#a855f7", order: 1 },
-          { name: "Pedido Externo", color: "#ef4444", order: 2 },
-          { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
-          { name: "Terminado", color: "#22c55e", order: 4 },
+          { name: "Fabricación Taller", color: "#3b82f6", order: 1 },
+          { name: "Ensambles Taller", color: "#a855f7", order: 2 },
+          { name: "Terminado Taller", color: "#22c55e", order: 3 },
+          { name: "Pedido Externo", color: "#ef4444", order: 4 },
+          { name: "Entregado Externo", color: "#065f46", order: 5 }
         ]
       }
     }
@@ -708,4 +709,12 @@ export async function updateTaskIsAssembly(taskId: string, isAssembly: boolean) 
   });
   revalidatePath("/");
   return flattenTask(updated as unknown as PrismaTaskWithRelations);
+}
+
+/** Actualiza los días de entrega de un pedido externo */
+export async function updateTaskDeliveryDays(taskId: string, deliveryDays: number) {
+  await requireAuth();
+  await prisma.task.update({ where: { id: taskId }, data: { deliveryDays } });
+  revalidatePath("/gantt");
+  revalidatePath("/kanban");
 }

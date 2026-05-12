@@ -23,10 +23,11 @@ export async function createEmptyProject(name: string, startDate: Date) {
         stages: {
           create: [
             { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
-            { name: "Ensambles", color: "#a855f7", order: 1 },
-            { name: "Pedido Externo", color: "#ef4444", order: 2 },
-            { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
-            { name: "Terminado", color: "#22c55e", order: 4 },
+            { name: "Fabricación Taller", color: "#3b82f6", order: 1 },
+            { name: "Ensambles Taller", color: "#a855f7", order: 2 },
+            { name: "Terminado Taller", color: "#22c55e", order: 3 },
+            { name: "Pedido Externo", color: "#ef4444", order: 4 },
+            { name: "Entregado Externo", color: "#065f46", order: 5 }
           ],
         },
       },

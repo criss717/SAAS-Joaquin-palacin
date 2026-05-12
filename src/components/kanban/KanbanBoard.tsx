@@ -156,7 +156,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
 
     const newStage = destination.droppableId;
     const newIndex = destination.index;
-    const isDoneStage = newStage.toLowerCase().includes("terminado") || newStage.toLowerCase().includes("terminado");
+    const isDoneStage = newStage.toLowerCase().includes("terminado") || newStage.toLowerCase().includes("entregado");
 
     // --- ACTUALIZACIÓN OPTIMISTA ---
     setTasks(prev => {
@@ -464,7 +464,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                 className="flex gap-4 overflow-x-auto kanban-scroll-x pb-4 h-full pt-[130px]"
               >
                 {stages
-                  .filter(col => showDone || (!col.name.toLowerCase().includes("terminado") && !col.name.toLowerCase().includes("terminado")))
+                  .filter(col => showDone || (!col.name.toLowerCase().includes("terminado") && !col.name.toLowerCase().includes("entregado")))
                   .map((column, colIndex) => {
                     const columnTasks = filteredTasks.filter(t => t.stage === column.name);
 
@@ -491,7 +491,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                   title="Agregar etapa"
                   className="flex items-center justify-center w-12 h-12 rounded-full bg-white/60 hover:bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-md transition-all duration-200 mt-6 group"
                 >
-                  <Plus size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors group-hover:scale-110" strokeWidth={2} />
+                  <Plus size={20} className="text-gray-400 w-12 group-hover:text-blue-500 transition-colors group-hover:scale-110" strokeWidth={2} />
                 </button>
                 {colProvided.placeholder}
               </div>

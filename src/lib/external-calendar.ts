@@ -19,11 +19,9 @@ export function isExternalWorkingDay(date: Date): boolean {
 
 /**
  * Avanza N días laborables desde una fecha usando el calendario de proveedores.
- * Salta fines de semana y todo agosto.
- *
- * @param startDate - Fecha de inicio
- * @param days - Número de días laborables a avanzar
- * @returns Fecha de entrega estimada (al cierre de jornada: 17:00)
+ * Cuenta solo Lun-Vie, salta fines de semana y todo agosto.
+ * 
+ * @deprecated Usar addCalendarDays para el nuevo comportamiento (días naturales).
  */
 export function addExternalDays(startDate: Date, days: number): Date {
   if (days <= 0) return new Date(startDate);
@@ -38,7 +36,40 @@ export function addExternalDays(startDate: Date, days: number): Date {
     }
   }
 
-  // Establecer hora de fin de jornada estándar
+  current.setHours(17, 0, 0, 0);
+  return current;
+}
+
+/**
+ * Avanza N días NATURALES desde una fecha, saltando TODO agosto.
+ * Si la fecha final cae en Sábado o Domingo (o en agosto), se mueve al siguiente Lunes hábil.
+ *
+ * Ejemplo: 12 semanas = 84 días desde 1-junio
+ *   → 84 - 61 (jun+jul) = 23 días desde 1-septiembre
+ *   → fecha final: 23 de septiembre
+ *
+ * @param startDate - Fecha de inicio
+ * @param days - Número de días naturales a avanzar (ej. 84 para 12 semanas)
+ * @returns Fecha de entrega estimada (al cierre de jornada: 17:00)
+ */
+export function addCalendarDays(startDate: Date, days: number): Date {
+  if (days <= 0) return new Date(startDate);
+
+  let added = 0;
+  const current = new Date(startDate);
+
+  while (added < days) {
+    current.setDate(current.getDate() + 1);
+    if (current.getMonth() !== 7) { // saltar agosto completo
+      added++;
+    }
+  }
+
+  // Si cayó en Sáb(6), Dom(0) o dentro de agosto → avanzar al siguiente día hábil
+  while (current.getDay() === 0 || current.getDay() === 6 || current.getMonth() === 7) {
+    current.setDate(current.getDate() + 1);
+  }
+
   current.setHours(17, 0, 0, 0);
   return current;
 }

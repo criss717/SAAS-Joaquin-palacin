@@ -23,6 +23,8 @@ export interface Part {
   parentId: string | null;
   quantity: number;
   estimatedHours: number;
+  deliveryDays: number;
+  preferredStage: string | null;
   subParts: Part[];
   operations: Operation[];
   materials: {
@@ -56,6 +58,8 @@ export function MachineDetailClient({
 
   const [name, setName] = useState("");
   const [qtyOrDays, setQtyOrDays] = useState(1);
+  const [quantity, setQuantity] = useState(1);
+  const [displayQtyOrDays, setDisplayQtyOrDays] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Estados para Edición de Pieza
@@ -64,6 +68,10 @@ export function MachineDetailClient({
   const [editName, setEditName] = useState("");
   const [editQty, setEditQty] = useState(1);
   const [editHours, setEditHours] = useState(0);
+  const [displayEditHours, setDisplayEditHours] = useState("");
+  const [editDeliveryDays, setEditDeliveryDays] = useState(0);
+  const [displayEditWeeks, setDisplayEditWeeks] = useState("");
+  const [editStage, setEditStage] = useState<string>("Fabricación Taller");
   // Para añadir nuevo material
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [newMaterialQty, setNewMaterialQty] = useState(0);
@@ -72,14 +80,20 @@ export function MachineDetailClient({
   // Estados de Buscador y Paginación
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [stageFilter, setStageFilter] = useState<"all" | "taller" | "externo">("all");
   const pageSize = 15;
 
   // Top level parts
   const rootParts = machine.parts.filter(p => !p.parentId);
 
+  const [isExternalPart, setIsExternalPart] = useState(false);
+
   const openAddPart = (parentId: string | null) => {
     setName("");
+    setQuantity(1);
     setQtyOrDays(1);
+    setDisplayQtyOrDays("1");
+    setIsExternalPart(false);
     setSelectedParentId(parentId);
     setIsPartModalOpen(true);
   };
@@ -87,6 +101,7 @@ export function MachineDetailClient({
   const openAddOp = (partId: string) => {
     setName("");
     setQtyOrDays(1);
+    setDisplayQtyOrDays("1");
     setSelectedPartId(partId);
     setIsOpModalOpen(true);
   };
@@ -98,8 +113,10 @@ export function MachineDetailClient({
       name,
       machineId: machine.id,
       parentId: selectedParentId || undefined,
-      quantity: qtyOrDays,
-      estimatedHours: selectedParentId ? 0 : qtyOrDays // Si es top level, usamos el valor del input como horas
+      quantity: quantity,
+      estimatedHours: isExternalPart ? 0 : qtyOrDays,
+      deliveryDays: isExternalPart ? qtyOrDays * 7 : 0,
+      preferredStage: isExternalPart ? "Pedido Externo" : "Fabricación Taller"
     });
     if (res.success && res.part) {
       setMachine(prev => ({
@@ -181,6 +198,10 @@ export function MachineDetailClient({
     setEditName(part.name);
     setEditQty(part.quantity);
     setEditHours(part.estimatedHours || 0);
+    setDisplayEditHours(part.estimatedHours > 0 ? part.estimatedHours.toString() : "");
+    setEditDeliveryDays(part.deliveryDays || 0);
+    setDisplayEditWeeks(part.deliveryDays > 0 ? (part.deliveryDays / 7).toFixed(1) : "");
+    setEditStage(part.preferredStage || "Fabricación Taller");
     setNewMaterialId(null);
     setNewMaterialQty(0);
     setNewUnitTypeId(null);
@@ -268,7 +289,9 @@ export function MachineDetailClient({
     const res = await updateCatalogPart(editingPart.id, machine.id, {
       name: editName,
       quantity: editQty,
-      estimatedHours: editHours
+      estimatedHours: editStage === "Pedido Externo" ? 0 : editHours,
+      deliveryDays: editStage === "Pedido Externo" ? editDeliveryDays : 0,
+      preferredStage: editStage
     });
     if (res.success && res.part) {
       setMachine(prev => ({
@@ -277,7 +300,9 @@ export function MachineDetailClient({
           ...p,
           name: editName,
           quantity: editQty,
-          estimatedHours: editHours
+          estimatedHours: editStage === "Pedido Externo" ? 0 : editHours,
+          deliveryDays: editStage === "Pedido Externo" ? editDeliveryDays : 0,
+          preferredStage: editStage
         } as Part : p)
       }));
       setIsEditModalOpen(false);
@@ -317,10 +342,15 @@ export function MachineDetailClient({
               <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                 <span className="truncate">{part.name}</span>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">x{part.quantity}</span>
-                {part.estimatedHours > 0 && (
+                {part.deliveryDays > 0 ? (
+                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">{Math.round(part.deliveryDays / 7)} sem.</span>
+                ) : part.estimatedHours > 0 ? (
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{part.estimatedHours} h.</span>
-                )}
+                ) : null}
               </div>
+              {part.preferredStage === "Pedido Externo" && (
+                <span className="text-[9px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded-md font-medium mt-1 inline-block">Pedido Externo</span>
+              )}
               {part.materials.length > 0 ? (
                 <div className="flex flex-wrap gap-1 mt-1">
                   {part.materials.map(m => (
@@ -381,7 +411,12 @@ export function MachineDetailClient({
     );
   };
 
-  const filteredRootParts = rootParts.filter(p => matchesSearch(p, searchTerm));
+  const filteredRootParts = rootParts.filter(p => {
+    if (!matchesSearch(p, searchTerm)) return false;
+    if (stageFilter === "taller") return p.preferredStage !== "Pedido Externo";
+    if (stageFilter === "externo") return p.preferredStage === "Pedido Externo";
+    return true;
+  });
   const totalPages = Math.ceil(filteredRootParts.length / pageSize);
   const paginatedRootParts = filteredRootParts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
@@ -403,6 +438,22 @@ export function MachineDetailClient({
           <Link href="/catalog" className="text-sm font-bold text-gray-500 hover:text-gray-900 flex items-center">
             <ArrowLeft size={16} className="mr-2" /> Volver al Catálogo
           </Link>
+
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {[
+              { id: "all", label: "Todas" },
+              { id: "taller", label: "Taller" },
+              { id: "externo", label: "Externas" },
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => { setStageFilter(f.id as typeof stageFilter); setCurrentPage(1); }}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${stageFilter === f.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
 
           <div className="flex-1 w-full md:max-w-md relative group">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
@@ -481,14 +532,53 @@ export function MachineDetailClient({
               <Label className="text-xs font-bold text-gray-600 uppercase">Nombre</Label>
               <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Sinfín Central" className="h-10 border-gray-200 rounded-xl" autoFocus />
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
-              <Input type="number" min={1} value={qtyOrDays} onChange={e => setQtyOrDays(Number(parseFloat(e.target.value).toFixed(2)) || 1)} className="h-10 border-gray-200 rounded-xl" />
-            </div>
+
             {!selectedParentId && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsExternalPart(false)}
+                  className={`flex-1 py-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${!isExternalPart ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-gray-50 border-gray-100 text-gray-400"}`}
+                >Fabricación Taller</button>
+                <button
+                  onClick={() => setIsExternalPart(true)}
+                  className={`flex-1 py-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${isExternalPart ? "bg-red-50 border-red-300 text-red-700" : "bg-gray-50 border-gray-100 text-gray-400"}`}
+                >Pedido Externo</button>
+              </div>
+            )}
+
+            {!selectedParentId ? (
+              <div className="flex items-end gap-2">
+                <div className="space-y-2 flex-1">
+                  <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad (uds)</Label>
+                  <Input type="number" min="1" step="1" value={quantity} onChange={e => setQuantity(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <Label className="text-xs font-bold text-gray-600 uppercase">
+                    {isExternalPart ? "Semanas" : "Horas"}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    value={displayQtyOrDays}
+                    onChange={e => setDisplayQtyOrDays(e.target.value)}
+                    onBlur={e => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v >= 0.1) {
+                        setQtyOrDays(Number(v.toFixed(1)));
+                        setDisplayQtyOrDays(v.toFixed(1));
+                      } else {
+                        setDisplayQtyOrDays(qtyOrDays > 0 ? qtyOrDays.toString() : "");
+                      }
+                    }}
+                    className="h-10 border-gray-200 rounded-xl"
+                  />
+                </div>
+              </div>
+            ) : (
               <div className="space-y-2">
-                <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas (Mano de Obra)</Label>
-                <Input type="number" step="0.1" value={qtyOrDays} onChange={e => setQtyOrDays(Number(parseFloat(e.target.value).toFixed(1)) || 0)} className="h-10 border-gray-200 rounded-xl" />
+                <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad (uds)</Label>
+                <Input type="number" min="1" step="1" value={quantity} onChange={e => setQuantity(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
               </div>
             )}
           </div>
@@ -507,15 +597,59 @@ export function MachineDetailClient({
               <Label className="text-xs font-bold text-gray-600 uppercase">Nombre</Label>
               <Input value={editName} onChange={e => setEditName(e.target.value)} className="h-10 border-gray-200 rounded-xl" />
             </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setEditStage("Fabricación Taller"); setDisplayEditHours(editHours > 0 ? editHours.toString() : ""); }}
+                className={`flex-1 py-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${editStage === "Fabricación Taller" ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-gray-50 border-gray-100 text-gray-400"}`}
+              >Fabricación Taller</button>
+              <button
+                onClick={() => { setEditStage("Pedido Externo"); setDisplayEditWeeks(editDeliveryDays > 0 ? (editDeliveryDays / 7).toFixed(1) : "1.0"); }}
+                className={`flex-1 py-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${editStage === "Pedido Externo" ? "bg-red-50 border-red-300 text-red-700" : "bg-gray-50 border-gray-100 text-gray-400"}`}
+              >Pedido Externo</button>
+            </div>
+
             <div className="flex items-end gap-2">
-              <div className="space-y-2">
+              <div className="space-y-2 flex-1">
                 <Label className="text-xs font-bold text-gray-600 uppercase">Cantidad</Label>
-                <Input type="number" min={1} value={editQty} onChange={e => setEditQty(Number(parseFloat(e.target.value).toFixed(2)) || 1)} className="h-10 border-gray-200 rounded-xl" />
+                <Input type="number" min="1" step="1" value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 1)} className="h-10 border-gray-200 rounded-xl" />
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
-                <Input type="number" step="0.1" value={editHours} onChange={e => setEditHours(Number(parseFloat(e.target.value).toFixed(1)) || 0)} className="h-10 border-gray-200 rounded-xl" />
-              </div>
+              {editStage === "Pedido Externo" ? (
+                <div className="space-y-2 flex-1">
+                  <Label className="text-xs font-bold text-gray-600 uppercase">Semanas Entrega</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    value={displayEditWeeks}
+                    onChange={e => setDisplayEditWeeks(e.target.value)}
+                    onBlur={e => {
+                      const weeks = parseFloat(e.target.value);
+                      if (!isNaN(weeks) && weeks >= 0.1) {
+                        const days = Math.round(weeks * 7);
+                        setEditDeliveryDays(days);
+                        setDisplayEditWeeks((days / 7).toFixed(1));
+                      } else {
+                        setDisplayEditWeeks(editDeliveryDays > 0 ? (editDeliveryDays / 7).toFixed(1) : "");
+                      }
+                    }}
+                    className="h-10 border-gray-200 rounded-xl"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2 flex-1">
+                  <Label className="text-xs font-bold text-gray-600 uppercase">Horas Estimadas</Label>
+                  <Input type="number" step="0.1" min="0" value={displayEditHours} onChange={e => setDisplayEditHours(e.target.value)} onBlur={e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) {
+                      setEditHours(Number(v.toFixed(1)));
+                      setDisplayEditHours(v.toFixed(1));
+                    } else {
+                      setDisplayEditHours(editHours > 0 ? editHours.toString() : "");
+                    }
+                  }} className="h-10 border-gray-200 rounded-xl" />
+                </div>
+              )}
             </div>
 
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">

@@ -27,7 +27,7 @@ export async function getMachineWithHierarchy(machineId: string) {
 
 // ----------------- GESTIÓN DE PIEZAS (ENSAMBLES) -----------------
 
-export async function createCatalogPart(data: { name: string; machineId: string; parentId?: string; quantity?: number; estimatedHours?: number }) {
+export async function createCatalogPart(data: { name: string; machineId: string; parentId?: string; quantity?: number; estimatedHours?: number; deliveryDays?: number; preferredStage?: string }) {
   try {
     const part = await prisma.catalogPart.create({
       data: {
@@ -36,6 +36,8 @@ export async function createCatalogPart(data: { name: string; machineId: string;
         parentId: data.parentId || null,
         quantity: data.quantity || 1,
         estimatedHours: data.estimatedHours || 0,
+        deliveryDays: data.deliveryDays || 0,
+        preferredStage: data.preferredStage || "Fabricación Taller",
       },
     });
     revalidatePath(`/catalog/${data.machineId}`);
@@ -50,6 +52,8 @@ export async function updateCatalogPart(id: string, machineId: string, data: {
   name?: string; 
   quantity?: number; 
   estimatedHours?: number;
+  deliveryDays?: number;
+  preferredStage?: string;
 }) {
   try {
     const part = await prisma.catalogPart.update({
@@ -58,6 +62,8 @@ export async function updateCatalogPart(id: string, machineId: string, data: {
         name: data.name,
         quantity: data.quantity,
         estimatedHours: data.estimatedHours,
+        deliveryDays: data.deliveryDays,
+        preferredStage: data.preferredStage,
       }
     });
     revalidatePath(`/catalog/${machineId}`);

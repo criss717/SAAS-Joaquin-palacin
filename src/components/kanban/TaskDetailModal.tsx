@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback, useRef } from "react";
+import { useState, useTransition, useCallback, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity, updateTaskIsAssembly, getProjectMaterialsSummary, addMaterialToTask, removeMaterialFromTask } from "@/lib/actions/tasks";
+import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity, updateTaskIsAssembly, getProjectMaterialsSummary, addMaterialToTask, removeMaterialFromTask, updateTaskDeliveryDays } from "@/lib/actions/tasks";
 import { updateCatalogFromTask, updateCatalogMaterialsFromTask } from "@/lib/actions/catalog";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { downloadMaterialReport } from "@/lib/utils/excel";
+import { addCalendarDays } from "@/lib/external-calendar";
 import { Package, Layers, GitBranch, Clock, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw, Download, Save, UserPlus, Check } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
@@ -71,7 +72,16 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [localProgress, setLocalProgress] = useState(task?.progress ?? 0);
   const [startDate, setStartDate] = useState(() => toDateTimeLocalValue(task?.startDate ?? ""));
   const [endDate, setEndDate] = useState(() => toDateTimeLocalValue(task?.endDate ?? ""));
-  const [estimatedHours, setEstimatedHours] = useState<number>(task?.estimatedHours ?? 0);
+  const [estimatedHours, setEstimatedHours] = useState<number>(() => {
+    const h = task?.estimatedHours ?? 0;
+    if (task?.stage !== "Pedido Externo" && task?.stage !== "Entregado Externo" && h === 0 && task?.startDate && task?.endDate) {
+      const start = new Date(task.startDate);
+      const end = new Date(task.endDate);
+      const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      return Math.max(1, Math.round(diffDays * 8));
+    }
+    return h;
+  });
   const [isCalculating, setIsCalculating] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<TaskAssignee[]>(task?.assignees ?? []);
   const [predecessorIds, setPredecessorIds] = useState<string[]>(task?.predecessors?.map(p => p.predecessor.id) ?? []);
@@ -79,12 +89,49 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [localQuantity, setLocalQuantity] = useState(task?.quantity ?? 1);
   const [localIsAssembly, setLocalIsAssembly] = useState(task?.isAssembly ?? false);
   const [unitHours, setUnitHours] = useState(initialUnitHours);
+  const [localDeliveryDays, setLocalDeliveryDays] = useState(() => {
+    const d = task?.deliveryDays ?? 0;
+    const isExt = task?.stage === "Pedido Externo" || task?.stage === "Entregado Externo";
+    if (!isExt && d > 0) return 0;
+    if (isExt && d === 0 && task?.startDate && task?.endDate) {
+      const start = new Date(task.startDate);
+      const end = new Date(task.endDate);
+      return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+    return d;
+  });
+  const [displayWeeks, setDisplayWeeks] = useState(() =>
+    localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : ""
+  );
+
+  // Sincronizar displayWeeks cuando localDeliveryDays cambia externamente (useEffect, handleStageChange)
+  useEffect(() => {
+    setDisplayWeeks(localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : "");
+  }, [localDeliveryDays]);
 
   // Nuevo material temporal
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [newMaterialQty, setNewMaterialQty] = useState(0);
   const [newUnitTypeId, setNewUnitTypeId] = useState<string | null>(null);
   const [materialSearch, setMaterialSearch] = useState("");
+
+  // Auto-calcular al cambiar de etapa si no hay valor
+  useEffect(() => {
+    const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
+    if (isExt && localDeliveryDays === 0 && startDate && endDate) {
+      const start = fromDateTimeInput(startDate);
+      const end = fromDateTimeInput(endDate);
+      const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      setLocalDeliveryDays(diffDays);
+    }
+    if (!isExt && estimatedHours === 0 && startDate && endDate) {
+      const start = fromDateTimeInput(startDate);
+      const end = fromDateTimeInput(endDate);
+      const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      setEstimatedHours(Math.round(diffDays * 8));
+      setUnitHours(Math.round(diffDays * 8) / (localQuantity || 1));
+    }
+  }, [selectedStage]);
 
   // Detección de cambios: comparamos contra task original (inmutable durante la vida del modal)
   const hasChanges = () => {
@@ -103,6 +150,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       localProgress !== (task.progress ?? 0) ||
       localIsAssembly !== (task.isAssembly ?? false) ||
       localQuantity !== (task.quantity ?? 1) ||
+      localDeliveryDays !== (task.deliveryDays ?? 0) ||
       (parentId ?? null) !== (task.parentId ?? null) ||
       Math.abs(unitHours - initialUnitHours) > 0.05 ||
       origAssigneeIds !== curAssigneeIds ||
@@ -274,6 +322,30 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     else if (status === "CANCELADO") setLocalProgress(0);
   };
 
+  const handleStageChange = (stage: string) => {
+    setSelectedStage(stage);
+    if (stage === "Pedido Externo" || stage === "Entregado Externo") {
+      if (startDate && endDate) {
+        const start = fromDateTimeInput(startDate);
+        const end = fromDateTimeInput(endDate);
+        const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+        setLocalDeliveryDays(diffDays);
+      } else {
+        setLocalDeliveryDays(localDeliveryDays > 0 ? localDeliveryDays : 7);
+      }
+    } else {
+      if (startDate && endDate) {
+        const start = fromDateTimeInput(startDate);
+        const end = fromDateTimeInput(endDate);
+        const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        const diffHours = Math.max(1, Math.round(diffDays * 8));
+        setEstimatedHours(diffHours);
+        setUnitHours(diffHours / (localQuantity || 1));
+      }
+      setLocalDeliveryDays(0);
+    }
+  };
+
   const handleAddMaterial = async () => {
     if (!task || !newMaterialId) return;
     if (newMaterialQty <= 0) {
@@ -422,6 +494,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
           cascadedUpdates = [...cascadedUpdates, ...res.updated];
         }
 
+        if (localDeliveryDays !== (task.deliveryDays ?? 0)) {
+          updates.push(updateTaskDeliveryDays(task.id, localDeliveryDays));
+        }
+
         if (localIsAssembly !== task.isAssembly) {
           const updatedTaskAssembly = await updateTaskIsAssembly(task.id, localIsAssembly);
           // Actualizamos la referencia local para que onTaskUpdated tenga el dato correcto
@@ -457,6 +533,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
           quantity: localQuantity,
           isAssembly: localIsAssembly,
           parentId,
+          deliveryDays: localDeliveryDays,
           assignees: selectedAssignees,
           predecessors: predecessorIds.map(id => ({ predecessor: { id, name: allTasks.find(at => at.id === id)?.name || "" } }))
         };
@@ -686,38 +763,81 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
 
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800">
-                    Horas Totales
-                  </Label>
-                  {(task.catalogPartId || task.catalogOperationId) && (
-                    <button
-                      type="button"
-                      onClick={handleSyncCatalog}
-                      disabled={isSyncingCatalog}
-                      title="Actualizar las horas en el catálogo maestro para futuros despieces"
-                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      {isSyncingCatalog ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                      Sincronizar
-                    </button>
-                  )}
-                </div>
-                <Input
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  value={estimatedHours || ""}
-                  onChange={e => {
-                    onHoursChange(Math.max(0, Number(Number(e.target.value).toFixed(1))))
-                  }}
-                  className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
-                />
-                {task.deliveryDays ? (
-                <p className="text-[9px] text-gray-500 mt-1">(Pedido externo - {task.deliveryDays} días)</p>
-              ) : (
-                <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x {localQuantity} ud)</p>
-              )}
+                {selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo" ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800">
+                        Semanas Entrega
+                      </Label>
+                      {task.catalogPartId && (
+                        <button
+                          type="button"
+                          onClick={handleSyncCatalog}
+                          disabled={isSyncingCatalog}
+                          title="Actualizar las semanas en el catálogo maestro"
+                          className="text-[10px] text-red-600 hover:text-red-800 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          {isSyncingCatalog ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                          Sincronizar
+                        </button>
+                      )}
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={displayWeeks}
+                      onChange={e => setDisplayWeeks(e.target.value)}
+                      onBlur={() => {
+                        const weeks = parseFloat(displayWeeks);
+                        if (!isNaN(weeks) && weeks >= 0.1) {
+                          const days = Math.round(weeks * 7);
+                          setLocalDeliveryDays(days);
+                          setDisplayWeeks((days / 7).toFixed(1));
+                          if (startDate) {
+                            const newEnd = addCalendarDays(fromDateTimeInput(startDate), days);
+                            setEndDate(toDateTimeLocalValue(newEnd));
+                          }
+                        } else {
+                          setDisplayWeeks(localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : "");
+                        }
+                      }}
+                      className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
+                    />
+                    <p className="text-[9px] text-gray-500 mt-1">({localDeliveryDays.toFixed(0)} días naturales · proveedor)</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800">
+                        Horas Totales
+                      </Label>
+                      {(task.catalogPartId || task.catalogOperationId) && (
+                        <button
+                          type="button"
+                          onClick={handleSyncCatalog}
+                          disabled={isSyncingCatalog}
+                          title="Actualizar las horas en el catálogo maestro para futuros despieces"
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          {isSyncingCatalog ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                          Sincronizar
+                        </button>
+                      )}
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      value={estimatedHours || ""}
+                      onChange={e => {
+                        onHoursChange(Math.max(0, Number(Number(e.target.value).toFixed(1))))
+                      }}
+                      className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
+                    />
+                    <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x {localQuantity} ud)</p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -741,7 +861,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 </Label>
                 <div className="flex gap-2">
                   <button onClick={() => handleSyncMaterials()}
-                    title="Sincronizar materiales con catálogo"
+                    title="Actualizar los materiales de esta pieza en el catálogo maestro"
                     className="bg-purple-100 text-purple-800 hover:bg-purple-200 px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1"
                     disabled={task?.materials?.length === 0}>
                     <RefreshCw size={12} /> Sincronizar
@@ -877,7 +997,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   {stages.map(s => (
                     <button
                       key={s.id}
-                      onClick={() => setSelectedStage(s.name)}
+                      onClick={() => handleStageChange(s.name)}
                       className={`px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${selectedStage === s.name
                         ? "bg-blue-50 text-blue-700 border-blue-200 shadow-sm"
                         : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"

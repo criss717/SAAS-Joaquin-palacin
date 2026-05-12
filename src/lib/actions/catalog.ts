@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { TimeEngine } from "@/lib/time-engine";
-import { addExternalDays } from "@/lib/external-calendar";
+import { addExternalDays, addCalendarDays } from "@/lib/external-calendar";
 
 async function requireAuth() {
   const session = await getServerSession(authOptions);
@@ -33,10 +33,11 @@ const NORM_STAGES: Record<string, string> = {
   "proveedor": "Pedido Externo",
   "taller": "Fabricación Taller",
   "fabricacion": "Fabricación Taller",
-  "ensambles": "Ensambles",
-  "ensamble": "Ensambles",
-  "terminado": "Terminado",
-  "listo": "Terminado"
+  "ensambles": "Ensambles Taller",
+  "ensamble": "Ensambles Taller",
+  "terminado": "Terminado Taller",
+  "entregado": "Entregado Externo",
+  "listo": "Terminado Taller"
 };
 
 function normalizeStageName(input: string): string {
@@ -236,10 +237,11 @@ export async function launchMachineToProject(machineId: string, projectName: str
         stages: {
           create: [
             { name: "Planeación y Diseño", color: "#f59e0b", order: 0 },
-            { name: "Ensambles", color: "#a855f7", order: 1 },
-            { name: "Pedido Externo", color: "#ef4444", order: 2 },
-            { name: "Fabricación Taller", color: "#3b82f6", order: 3 },
-            { name: "Terminado", color: "#22c55e", order: 4 },
+            { name: "Fabricación Taller", color: "#3b82f6", order: 1 },
+            { name: "Ensambles Taller", color: "#a855f7", order: 2 },
+            { name: "Terminado Taller", color: "#22c55e", order: 3 },
+            { name: "Pedido Externo", color: "#ef4444", order: 4 },
+            { name: "Entregado Externo", color: "#065f46", order: 5 }
           ]
         }
       }
@@ -305,17 +307,17 @@ export async function launchMachineToProject(machineId: string, projectName: str
         : (part.estimatedHours || 0) + partOpsHours;
 
       // Las horas estimadas totales se escalan por la cantidad total
-      let finalEstimatedHours = (unitEstimatedHours || 8) * totalQuantity;
+      // Para pedidos externos, las horas son 0 (el trabajo lo hace el proveedor)
+      const isExternal = part.preferredStage === "Pedido Externo" || part.preferredStage === "Entregado Externo";
+      let finalEstimatedHours = (isExternal ? 0 : (unitEstimatedHours || 8)) * totalQuantity;
 
       // Cálculo de Fechas
-      const isExternal = part.preferredStage === "Pedido Externo";
       let taskEndDate: Date;
 
       if (isExternal && (part.deliveryDays || 0) > 0) {
-        // Para pedido externo: fecha fin por calendario genérico de proveedores (sin agosto)
-        taskEndDate = addExternalDays(projectStartDate, part.deliveryDays!);
-        // Las horas estimadas se calculan como horas laborables internas en ese periodo
-        finalEstimatedHours = engine.calculateBusinessHours(projectStartDate, taskEndDate);
+        // Pedido externo: fecha fin = días naturales + normalización a Lunes (sin agosto)
+        taskEndDate = addCalendarDays(projectStartDate, part.deliveryDays!);
+        // NO recalcular horas con el engine → finalEstimatedHours ya es 0
       } else {
         // Para fabricación: fecha fin por motor de tiempo (horas laborables)
         taskEndDate = engine.addBusinessHours(projectStartDate, Math.max(1, finalEstimatedHours));
@@ -333,7 +335,7 @@ export async function launchMachineToProject(machineId: string, projectName: str
           startDate: projectStartDate,
           endDate: taskEndDate,
           estimatedHours: finalEstimatedHours,
-          unitEstimatedHours: unitEstimatedHours || 8,
+          unitEstimatedHours: isExternal ? 0 : (unitEstimatedHours || 8),
           quantity: totalQuantity,
           deliveryDays: part.deliveryDays || 0,
           catalogPartId: part.id,
@@ -560,6 +562,7 @@ export async function importMachineFromExcel(formData: FormData) {
 
     // 4. Primera pasada: Crear CatalogPart y guardar IDs por nombre (Agregando materiales si el nombre se repite)
     const partNameToId = new Map<string, string>();
+    const partNameToStage = new Map<string, string>();
     for (const r of rows) {
       const lowerName = r.nombre.toLowerCase();
       let partId = partNameToId.get(lowerName);
@@ -570,13 +573,14 @@ export async function importMachineFromExcel(formData: FormData) {
             name: r.nombre,
             machineId: machine.id,
             quantity: r.cantidad,
-            preferredStage: r.etapa === "Pedido Externo" ? "Pedido Externo" : "Fabricación Taller",
+            preferredStage: r.etapa,
             deliveryDays: r.etapa === "Pedido Externo" ? r.plazo : 0,
             estimatedHours: r.etapa !== "Pedido Externo" ? Math.max(0, r.horas) : 0,
           }
         });
         partId = part.id;
         partNameToId.set(lowerName, partId);
+        partNameToStage.set(lowerName, part.preferredStage || "");
       }
 
       // Añadir material a la pieza (nueva o existente)
@@ -606,23 +610,26 @@ export async function importMachineFromExcel(formData: FormData) {
           });
 
           // Si una pieza tiene hijos, la convertimos automáticamente en Ensamble
-          // y le asignamos la etapa de "Ensambles" por defecto
-          await prisma.catalogPart.update({
-            where: { id: parentId },
-            data: { preferredStage: "Ensambles" }
-          });
+          // pero solo si no era ya Pedido Externo
+          const parentStage = partNameToStage.get(parentKey) || "Ensambles Taller";
+          if (parentStage !== "Pedido Externo") {
+            await prisma.catalogPart.update({
+              where: { id: parentId },
+              data: { preferredStage: "Ensambles Taller" }
+            });
+          }
         }
       }
     }
 
     revalidatePath("/catalog");
-    
+
     // Obtener la máquina con el conteo de piezas
     const machineWithCount = await prisma.machineCatalog.findUnique({
       where: { id: machine.id },
       include: { _count: { select: { parts: true } } }
     });
-    
+
     return { success: true, machine: machineWithCount };
   } catch (error) {
     console.error("Excel Import Error:", error);
@@ -724,6 +731,7 @@ export async function updateCatalogFromTask(taskId: string) {
       estimatedHours: true,
       quantity: true,
       deliveryDays: true,
+      stage: true,
       catalogPartId: true,
       catalogOperationId: true
     }
@@ -744,9 +752,10 @@ export async function updateCatalogFromTask(taskId: string) {
     const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
     await prisma.catalogPart.update({
       where: { id: task.catalogPartId },
-      data: { 
+      data: {
         deliveryDays: task.deliveryDays || 0,
-        estimatedHours: realUnitHours
+        estimatedHours: realUnitHours,
+        preferredStage: task.stage === "Pedido Externo" || task.stage === "Entregado Externo" ? "Pedido Externo" : "Fabricación Taller"
       }
     });
   } else {

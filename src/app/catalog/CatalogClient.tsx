@@ -745,7 +745,7 @@ export function CatalogClient({
               <Input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Ej: Decanter Cliente Amazon" className="h-10 border-gray-200 rounded-xl" autoFocus />
             </div>
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha de Inicio del Trabajo</Label>
+              <Label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Fecha de Inicio del Proyecto</Label>
               <Input type="date" value={launchStartDate} onChange={e => setLaunchStartDate(e.target.value)} className="h-10 border-gray-200 rounded-xl" />
             </div>
             <div className="space-y-2">

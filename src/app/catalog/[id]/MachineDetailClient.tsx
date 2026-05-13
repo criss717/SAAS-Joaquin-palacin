@@ -343,7 +343,7 @@ export function MachineDetailClient({
                 <span className="truncate">{part.name}</span>
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">x{part.quantity}</span>
                 {part.deliveryDays > 0 ? (
-                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">{Math.round(part.deliveryDays / 7)} sem.</span>
+                  <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">{(part.deliveryDays / 7).toFixed(1)} sem.</span>
                 ) : part.estimatedHours > 0 ? (
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{part.estimatedHours} h.</span>
                 ) : null}
@@ -466,6 +466,18 @@ export function MachineDetailClient({
               }}
               className="pl-10 h-11 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:bg-white bg-gray-50 rounded-xl transition-all font-medium text-gray-700"
             />
+            {/* // x  para limpiar */}
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Limpiar búsqueda"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-21 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <X size={12} />
+              </Button>
+            )}
             {searchTerm && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-lg">
                 {filteredRootParts.length} resultados

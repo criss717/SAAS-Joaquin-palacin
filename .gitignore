@@ -47,3 +47,6 @@ next-env.d.ts
 
 #excel
 *.xlsx
+
+#carpeta de opencode
+*.opencode

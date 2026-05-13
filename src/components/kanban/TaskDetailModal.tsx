@@ -14,7 +14,7 @@ import { updateCatalogFromTask, updateCatalogMaterialsFromTask } from "@/lib/act
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { downloadMaterialReport } from "@/lib/utils/excel";
 import { addCalendarDays } from "@/lib/external-calendar";
-import { Package, Layers, GitBranch, Clock, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, Calculator, Loader2, Hash, RefreshCw, Download, Save, UserPlus, Check } from "lucide-react";
+import { Package, Layers, GitBranch, Clock, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, X, Loader2, Hash, RefreshCw, Download, Save, UserPlus, Check } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
 import { toast } from "sonner";
@@ -420,7 +420,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       setError("La fecha de fin es obligatoria");
       return;
     }
-    if (estimatedHours <= 0) {
+    if (estimatedHours <= 0 && selectedStage !== "Pedido Externo" && selectedStage !== "Entregado Externo") {
       setError("Las horas deben ser mayor a 0");
       return;
     }
@@ -788,8 +788,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                       min="0.1"
                       value={displayWeeks}
                       onChange={e => setDisplayWeeks(e.target.value)}
-                      onBlur={() => {
-                        const weeks = parseFloat(displayWeeks);
+                      onBlur={e => {
+                        const weeks = parseFloat(e.target.value);
                         if (!isNaN(weeks) && weeks >= 0.1) {
                           const days = Math.round(weeks * 7);
                           setLocalDeliveryDays(days);
@@ -835,7 +835,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                       }}
                       className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
                     />
-                    <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x {localQuantity} ud)</p>
+                    <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x 1 ud)</p>
                   </div>
                 )}
               </div>
@@ -899,17 +899,29 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 <div className="space-y-1.5 w-full">
                   <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Añadir Material</Label>
                   <Input
-                    placeholder="Buscar material..."
+                    placeholder="Buscar material (escribe para ver opciones)..."
                     value={materialSearch || materials.find(m => m.id === newMaterialId)?.name || ""}
                     onChange={(e) => {
                       setMaterialSearch(e.target.value.toUpperCase());
                       if (!e.target.value) setNewMaterialId("");
                     }}
                     onFocus={() => setMaterialSearch("")}
-                    className="h-9 text-xs bg-white border-gray-200"
+                    className="h-9 text-xs bg-white text-gray-700 font-medium border-gray-200"
                   />
                   {materialSearch && (
-                    <div className="absolute z-20 mt-1 w-full max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl animate-in fade-in slide-in-from-top-1 kanban-scroll">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Limpiar búsqueda"
+                      onClick={() => setMaterialSearch("")}
+                      className="absolute right-21 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+                    >
+                      <X size={12} />
+                    </Button>
+                  )}
+
+                  {materialSearch && (
+                    <div className="absolute z-20 mt-1 sm:w-[400px] w-full max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl animate-in fade-in slide-in-from-top-1 kanban-scroll">
                       {materials
                         .filter(m => normalize(m.name).includes(normalize(materialSearch)))
                         .map(m => (

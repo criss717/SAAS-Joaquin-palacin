@@ -7,8 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { createStage, updateStage, deleteStage } from "@/lib/actions/stages";
-import { Plus, Pencil, Trash2, Check, X, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, GripVertical, Lock } from "lucide-react";
 import { toast } from "sonner";
+
+const PROTECTED_STAGES = [
+  "Pedido Externo",
+  "Entregado Externo",
+  "Fabricación Taller",
+  "Ensambles Taller",
+  "Terminado Taller",
+];
+
+function isProtected(name: string) {
+  return PROTECTED_STAGES.includes(name);
+}
 
 type Stage = { id: string; name: string; color: string; order: number }
 
@@ -100,26 +112,40 @@ export function StageManagerModal({ open, projectId, stages, onClose, onStagesCh
 
               {editingId === s.id ? (
                 <>
-                  <Input
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    className="h-7 text-sm flex-1"
-                    autoFocus
-                  />
-                  <div className="flex gap-1">
-                    {PRESET_COLORS.map(c => (
-                      <button
-                        key={c.hex}
-                        title={c.label}
-                        onClick={() => setEditColor(c.hex)}
-                        className={`w-4 h-4 rounded-full border-2 transition-transform hover:scale-110 cursor-pointer ${editColor === c.hex ? "border-gray-800" : "border-transparent"}`}
-                        style={{ backgroundColor: c.hex }}
-                      />
-                    ))}
-                  </div>
-                  <button onClick={() => handleSaveEdit(s)} disabled={isPending} className="text-green-600 hover:text-green-700 cursor-pointer">
-                    <Check size={15} />
-                  </button>
+                  {isProtected(s.name) ? (
+                    <Input
+                      value={editName}
+                      disabled
+                      className="h-7 text-sm flex-1 bg-gray-50 text-gray-400 cursor-not-allowed"
+                    />
+                  ) : (
+                    <Input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="h-7 text-sm flex-1"
+                      autoFocus
+                    />
+                  )}
+                  {isProtected(s.name) ? (
+                    <span className="w-30 h-3 rounded-full shrink-0 opacity-50" style={{ backgroundColor: editColor }} />
+                  ) : (
+                    <div className="flex gap-1">
+                      {PRESET_COLORS.map(c => (
+                        <button
+                          key={c.hex}
+                          title={c.label}
+                          onClick={() => setEditColor(c.hex)}
+                          className={`w-4 h-4 rounded-full border-2 transition-transform hover:scale-110 cursor-pointer ${editColor === c.hex ? "border-gray-800" : "border-transparent"}`}
+                          style={{ backgroundColor: c.hex }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {!isProtected(s.name) && (
+                    <button onClick={() => handleSaveEdit(s)} disabled={isPending} className="text-green-600 hover:text-green-700 cursor-pointer">
+                      <Check size={15} />
+                    </button>
+                  )}
                   <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer">
                     <X size={15} />
                   </button>
@@ -127,21 +153,32 @@ export function StageManagerModal({ open, projectId, stages, onClose, onStagesCh
               ) : (
                 <>
                   <span className="text-sm font-medium text-gray-800 flex-1">{s.name}</span>
+                  {isProtected(s.name) && (
+                    <span className="text-[9px] text-gray-400 font-medium bg-gray-100 px-1.5 py-0.5 rounded mr-1">Sistema</span>
+                  )}
                   {isAdmin && (
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleStartEdit(s)}
-                        className="text-gray-400 hover:text-blue-600 p-0.5 cursor-pointer"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(s)}
-                        className="text-gray-400 hover:text-red-500 p-0.5 cursor-pointer"
-                        disabled={isPending}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                    <div className="flex gap-1">
+                      {isProtected(s.name) ? (
+                        <span className="text-gray-300 p-0.5 cursor-not-allowed" title="Las etapas del sistema no se pueden modificar">
+                          <Lock size={13} />
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleStartEdit(s)}
+                            className="text-gray-400 hover:text-blue-600 p-0.5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(s)}
+                            className="text-gray-400 hover:text-red-500 p-0.5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                            disabled={isPending}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </>

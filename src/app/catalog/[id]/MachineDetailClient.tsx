@@ -159,9 +159,14 @@ export function MachineDetailClient({
   };
 
   const delPart = async (id: string, partName: string) => {
+    const childrenCount = machine.parts.filter(p => p.parentId === id).length;
+    const warningText = childrenCount > 0
+      ? `Se eliminará "${partName}" y sus ${childrenCount} sub-pieza(s).`
+      : `Se eliminará "${partName}" y todo su contenido.`;
+
     const result = await Swal.fire({
       title: '¿Eliminar Pieza?',
-      text: `Se eliminará "${partName}" y todo su contenido.`,
+      text: warningText,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
@@ -366,20 +371,17 @@ export function MachineDetailClient({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 opacity-100 sm:opacity-50 group-hover:opacity-100 transition-opacity">
-            <Button size="sm" variant="outline" onClick={() => handleDownloadMaterials(part.id, part.name)} className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 cursor-pointer" title="Descargar materiales de esta pieza/ensamble">
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={() => handleDownloadMaterials(part.id, part.name)} className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 cursor-pointer" title="Descargar materiales">
               <Download size={14} />
             </Button>
             <Button size="sm" variant="outline" onClick={() => openEditPart(part)} className="h-8 w-8 p-0 text-gray-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer" title="Editar pieza">
               <Edit size={14} />
             </Button>
-            <Button size="sm" variant="outline" onClick={() => openAddPart(part.id)} className="h-8 text-xs font-semibold text-blue-600 border-blue-200 hover:bg-blue-50 cursor-pointer">
-              <Plus size={12} className="mr-1" /> Sub-Pieza
+            <Button size="sm" variant="outline" onClick={() => openAddPart(part.id)} className="h-8 text-xs font-semibold text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700 cursor-pointer">
+              <Plus size={12} className="mr-1" /> Sub-tarea
             </Button>
-            <Button size="sm" variant="outline" onClick={() => openAddOp(part.id)} className="h-8 text-xs font-semibold text-indigo-600 border-indigo-200 hover:bg-indigo-50 cursor-pointer">
-              <Wrench size={12} className="mr-1" /> Operación
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => delPart(part.id, part.name)} className="h-8 w-8 p-0 text-red-100 hover:text-red-600 hover:bg-red-50 cursor-pointer">
+            <Button size="sm" variant="outline" onClick={() => delPart(part.id, part.name)} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" title="Eliminar pieza">
               <Trash2 size={14} />
             </Button>
           </div>

@@ -727,28 +727,39 @@ export async function updateCatalogFromTask(taskId: string) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
+      name: true,
       unitEstimatedHours: true,
       estimatedHours: true,
       quantity: true,
       deliveryDays: true,
       stage: true,
+      projectId: true,
+      parentId: true,
       catalogPartId: true,
-      catalogOperationId: true
+      catalogOperationId: true,
+      predecessors: { select: { predecessor: { select: { id: true } } } },
+      materials: {
+        select: {
+          materialId: true,
+          quantityPerUnit: true,
+          unitTypeId: true
+        }
+      }
     }
   });
 
   if (!task) throw new Error("Tarea no encontrada");
 
-  if (task.catalogOperationId) {
-    // Calcular el tiempo unitario real si el campo unitEstimatedHours es nulo
-    const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
+  let newPart: { id: string } | undefined;
+  const updatedPredTaskIds: string[] = [];
 
+  if (task.catalogOperationId) {
+    const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
     await prisma.catalogOperation.update({
       where: { id: task.catalogOperationId },
       data: { estimatedHours: realUnitHours }
     });
   } else if (task.catalogPartId) {
-    // Es una pieza (Pedido Externo sin operaciones)
     const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
     await prisma.catalogPart.update({
       where: { id: task.catalogPartId },
@@ -758,12 +769,171 @@ export async function updateCatalogFromTask(taskId: string) {
         preferredStage: task.stage === "Pedido Externo" || task.stage === "Entregado Externo" ? "Pedido Externo" : "Fabricación Taller"
       }
     });
+    await prisma.catalogPartMaterial.deleteMany({ where: { catalogPartId: task.catalogPartId } });
+    for (const tm of task.materials) {
+      await prisma.catalogPartMaterial.create({
+        data: {
+          catalogPartId: task.catalogPartId,
+          materialId: tm.materialId,
+          quantityPerUnit: tm.quantityPerUnit,
+          unitTypeId: tm.unitTypeId
+        }
+      });
+    }
   } else {
-    throw new Error("Esta tarea no está vinculada a ningún elemento del catálogo");
+    // La tarea no tiene pieza en el catálogo → CREAR una nueva
+    
+    // Buscar la máquina correcta
+    const machineId = await findMachineFromProject(task.projectId);
+
+    // 1. Crear/asegurar el padre (ensamble) si la tarea pertenece a uno
+    let parentCatalogPartId: string | null = null;
+    if (task.parentId) {
+      const parentTask = await prisma.task.findUnique({
+        where: { id: task.parentId },
+        select: { catalogPartId: true, name: true, quantity: true }
+      });
+      if (parentTask?.catalogPartId) {
+        parentCatalogPartId = parentTask.catalogPartId;
+      } else if (parentTask) {
+        const parentPart = await prisma.catalogPart.create({
+          data: {
+            name: parentTask.name,
+            machineId,
+            quantity: parentTask.quantity || 1,
+            preferredStage: "Ensambles Taller",
+          }
+        });
+        parentCatalogPartId = parentPart.id;
+        await prisma.task.update({
+          where: { id: task.parentId! },
+          data: { catalogPartId: parentPart.id }
+        });
+      }
+    }
+
+    // 2. Crear la pieza principal
+    const realUnitHours = task.unitEstimatedHours ?? ((task.estimatedHours ?? 0) / (task.quantity || 1));
+    newPart = await prisma.catalogPart.create({
+      data: {
+        name: task.name,
+        machineId,
+        parentId: parentCatalogPartId,
+        quantity: task.quantity,
+        estimatedHours: realUnitHours,
+        deliveryDays: task.deliveryDays || 0,
+        preferredStage: task.stage === "Pedido Externo" || task.stage === "Entregado Externo" ? "Pedido Externo" : "Fabricación Taller"
+      }
+    });
+
+// 3. Crear sub-piezas para las dependencias (predecesores) como hijos de la pieza principal
+    updatedPredTaskIds.length = 0;
+    if (task.predecessors?.length) {
+      for (const predRel of task.predecessors) {
+        const predId = predRel.predecessor.id;
+        const predTask = await prisma.task.findUnique({
+          where: { id: predId },
+          select: { id: true, catalogPartId: true, name: true, quantity: true, estimatedHours: true, deliveryDays: true }
+        });
+        
+        if (predTask) {
+          if (!predTask.catalogPartId) {
+            const predPart = await prisma.catalogPart.create({
+              data: {
+                name: predTask.name,
+                machineId,
+                quantity: predTask.quantity,
+                parentId: newPart.id,
+                estimatedHours: predTask.estimatedHours || 0,
+                deliveryDays: predTask.deliveryDays || 0,
+                preferredStage: "Fabricación Taller",
+              }
+            });
+            await prisma.task.update({
+              where: { id: predTask.id },
+              data: { catalogPartId: predPart.id }
+            });
+            updatedPredTaskIds.push(predTask.id);
+          } else {
+            const existing = await prisma.catalogPart.findUnique({
+              where: { id: predTask.catalogPartId }
+            });
+            if (existing) {
+              await prisma.catalogPart.update({
+                where: { id: predTask.catalogPartId },
+                data: { parentId: newPart.id }
+              });
+            }
+          }
+        } else {
+          const deadPart = await prisma.catalogPart.create({
+            data: {
+              name: `[Dependencia #${predId.slice(0, 8)}]`,
+              machineId,
+              quantity: 1,
+              parentId: newPart.id,
+              preferredStage: "Fabricación Taller",
+            }
+          });
+        }
+      }
+    }
+
+    // 4. Copiar materiales a la nueva pieza
+    for (const tm of task.materials) {
+      await prisma.catalogPartMaterial.create({
+        data: {
+          catalogPartId: newPart.id,
+          materialId: tm.materialId,
+          quantityPerUnit: tm.quantityPerUnit,
+          unitTypeId: tm.unitTypeId
+        }
+      });
+    }
+
+    // 5. Vincular la tarea con la nueva pieza del catálogo
+    await prisma.task.update({
+      where: { id: taskId },
+      data: { catalogPartId: newPart.id }
+    });
   }
 
   revalidatePath("/catalog");
-  return { success: true };
+  const partId = task.catalogOperationId ? null : (task.catalogPartId || (newPart?.id ?? null));
+  return { success: true, catalogPartId: partId, updatedPredTaskIds };
+}
+
+/** Busca la máquina del catálogo asociada al proyecto mirando tareas hermanas con catalogPartId */
+async function findMachineFromProject(projectId: string): Promise<string> {
+  // Buscar una tarea hermana que SÍ tenga catalogPartId y obtener su máquina
+  const siblingTask = await prisma.task.findFirst({
+    where: {
+      projectId,
+      catalogPartId: { not: null }
+    },
+    select: { catalogPartId: true }
+  });
+
+  if (siblingTask?.catalogPartId) {
+    const catalogPart = await prisma.catalogPart.findUnique({
+      where: { id: siblingTask.catalogPartId },
+      select: { machineId: true }
+    });
+    if (catalogPart?.machineId) return catalogPart.machineId;
+  }
+
+  // Si no hay hermanas con catalogPart, buscar en las máquinas existentes
+  const existingMachine = await prisma.machineCatalog.findFirst({ orderBy: { createdAt: "desc" } });
+  if (existingMachine) return existingMachine.id;
+
+  // Último recurso: crear máquina por defecto
+  const machine = await prisma.machineCatalog.create({
+    data: {
+      name: "Catálogo General",
+      description: "Piezas sincronizadas desde proyectos."
+    }
+  });
+  return machine.id;
 }
 
 /** Sincroniza la lista de materiales de una tarea con su pieza en el catálogo maestro */

@@ -152,6 +152,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       localQuantity !== (task.quantity ?? 1) ||
       localDeliveryDays !== (task.deliveryDays ?? 0) ||
       (parentId ?? null) !== (task.parentId ?? null) ||
+      startDate !== toDateTimeLocalValue(task.startDate) ||
+      endDate !== toDateTimeLocalValue(task.endDate) ||
       Math.abs(unitHours - initialUnitHours) > 0.05 ||
       origAssigneeIds !== curAssigneeIds ||
       origPredIds !== curPredIds
@@ -245,13 +247,28 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const onStartDateChange = (val: string) => {
     setStartDate(val);
     if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
-    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 500);
+    const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
+    if (isExt && localDeliveryDays > 0) {
+      const newEnd = addCalendarDays(fromDateTimeInput(val), localDeliveryDays);
+      setEndDate(toDateTimeLocalValue(newEnd));
+    } else {
+      calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 500);
+    }
   };
 
   const onEndDateChange = (val: string) => {
     setEndDate(val);
-    if (calcHoursTimer.current) clearTimeout(calcHoursTimer.current);
-    calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 500);
+    const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
+    if (isExt && startDate) {
+      const start = fromDateTimeInput(startDate);
+      const end = fromDateTimeInput(val);
+      const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      setLocalDeliveryDays(diffDays);
+      setDisplayWeeks((diffDays / 7).toFixed(1));
+    } else {
+      if (calcHoursTimer.current) clearTimeout(calcHoursTimer.current);
+      calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 500);
+    }
   };
 
   const onHoursChange = (val: number) => {
@@ -546,6 +563,39 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
           onTaskUpdated(cascaded);
         }
 
+        // Notificar al padre si cambió
+        if (parentId !== task.parentId) {
+          // Quitar del padre anterior
+          if (task.parentId) {
+            const oldParent = allTasks.find(t => t.id === task.parentId);
+            if (oldParent) {
+              const updatedOldParent = {
+                ...oldParent,
+                predecessors: oldParent.predecessors.filter(
+                  (p: { predecessor: { id: string } }) => p.predecessor.id !== task.id
+                )
+              };
+              onTaskUpdated(updatedOldParent);
+            }
+          }
+          // Añadir al nuevo padre
+          if (parentId) {
+            const parentTask = allTasks.find(t => t.id === parentId);
+            if (parentTask) {
+              const alreadyHasPred = parentTask.predecessors.some(
+                (p: { predecessor: { id: string } }) => p.predecessor.id === task.id
+              );
+              const updatedParent = {
+                ...parentTask,
+                predecessors: alreadyHasPred
+                  ? parentTask.predecessors
+                  : [...parentTask.predecessors, { predecessor: { id: task.id, name: localName } }]
+              };
+              onTaskUpdated(updatedParent);
+            }
+          }
+        }
+
         resolve(true);
       });
     });
@@ -555,12 +605,16 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const handleSyncCatalog = async () => {
     if (!task) return;
 
+    const isNew = !task.catalogPartId && !task.catalogOperationId;
+
     const result = await Swal.fire({
-      title: '¿Guardar como estándar?',
-      text: "Este tiempo se guardará en el catálogo maestro para futuras producciones de esta pieza.",
+      title: isNew ? '¿Crear en catálogo?' : '¿Guardar como estándar?',
+      text: isNew
+        ? "Se creará una nueva pieza en el catálogo maestro con los datos de esta tarea."
+        : "Este tiempo se guardará en el catálogo maestro para futuras producciones de esta pieza.",
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Sí, sincronizar',
+      confirmButtonText: isNew ? 'Sí, crear' : 'Sí, sincronizar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#3b82f6',
     });
@@ -572,11 +626,28 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         await handleSave();
 
         // 2. ACTUALIZAR CATÁLOGO
-        await updateCatalogFromTask(task.id);
+        const syncRes = await updateCatalogFromTask(task.id);
+
+        // 3. Si se creó una nueva pieza, notificar al kanban
+        if (isNew && syncRes.catalogPartId) {
+          onTaskUpdated({ ...task, catalogPartId: syncRes.catalogPartId } as TaskWithRelations);
+        }
+
+        // 4. Notificar al kanban sobre las dependencias que se actualizaron
+        if (syncRes.updatedPredTaskIds?.length) {
+          for (const predId of syncRes.updatedPredTaskIds) {
+            const predTask = allTasks.find(t => t.id === predId);
+            if (predTask) {
+              onTaskUpdated({ ...predTask } as TaskWithRelations);
+            }
+          }
+        }
 
         Swal.fire({
-          title: '¡Maestro Actualizado!',
-          text: 'Se han guardado los cambios y el tiempo estándar en el catálogo.',
+          title: isNew ? '¡Creado en Catálogo!' : '¡Maestro Actualizado!',
+          text: isNew
+            ? 'La pieza se ha creado en el catálogo maestro con sus materiales y datos.'
+            : 'Se han guardado los cambios y el tiempo estándar en el catálogo.',
           icon: 'success',
           timer: 2000,
           showConfirmButton: false
@@ -675,6 +746,18 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <Trash2 size={16} />
                   Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
                 </Button>
+                {!task.catalogPartId && !task.catalogOperationId && (
+                  <Button
+                    variant="outline"
+                    title="Crear pieza/ensamble con todas sus dependencias, materiales en catalogo maestro"
+                    onClick={handleSyncCatalog}
+                    disabled={isPending || isSyncingCatalog}
+                    className="rounded-xl text-xs font-bold text-gray-500 hover:text-blue-600 hover:bg-blue-50 gap-1 cursor-pointer h-7 mx-2"
+                  >
+                    <RefreshCw size={12} />
+                    Crear en catálogo
+                  </Button>
+                )}
               </div>
               <div className="flex gap-3 mr-8">
                 <Button
@@ -860,12 +943,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                   <Package size={14} className="text-blue-500" /> Lista de Materiales Requeridos
                 </Label>
                 <div className="flex gap-2">
-                  <button onClick={() => handleSyncMaterials()}
-                    title="Actualizar los materiales de esta pieza en el catálogo maestro"
-                    className="bg-purple-100 text-purple-800 hover:bg-purple-200 px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1"
-                    disabled={task?.materials?.length === 0}>
-                    <RefreshCw size={12} /> Sincronizar
-                  </button>
+                  {task.catalogPartId && (
+                    <button onClick={() => handleSyncMaterials()}
+                      title="Actualizar los materiales de esta pieza en el catálogo maestro"
+                      className="bg-purple-100 text-purple-800 hover:bg-purple-200 px-3 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1"
+                      disabled={task?.materials?.length === 0}>
+                      <RefreshCw size={12} /> Sincronizar
+                    </button>
+                  )}
                   <button onClick={() => handleDownloadMaterials()}
                     title="Descargar materiales"
                     className="bg-green-100 text-green-800 hover:bg-green-200 px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2"
@@ -896,7 +981,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
 
               <div className="pt-4 border-t border-gray-200 grid grid-cols-1 gap-4">
-                <div className="space-y-1.5 w-full">
+                <div className="space-y-1.5 w-full relative">
                   <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Añadir Material</Label>
                   <Input
                     placeholder="Buscar material (escribe para ver opciones)..."
@@ -908,16 +993,15 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     onFocus={() => setMaterialSearch("")}
                     className="h-9 text-xs bg-white text-gray-700 font-medium border-gray-200"
                   />
-                  {materialSearch && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Limpiar búsqueda"
-                      onClick={() => setMaterialSearch("")}
-                      className="absolute right-21 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all cursor-pointer"
+                  {(materialSearch || newMaterialId) && (
+                    <button
+                      type="button"
+                      title="Limpiar selección"
+                      onClick={() => { setMaterialSearch(""); setNewMaterialId(null); }}
+                      className="absolute right-2 top-7 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md p-0.5 transition-all cursor-pointer"
                     >
-                      <X size={12} />
-                    </Button>
+                      <X size={14} />
+                    </button>
                   )}
 
                   {materialSearch && (

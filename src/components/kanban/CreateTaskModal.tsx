@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { createTask, TaskWithRelations } from "@/lib/actions/tasks";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { cn } from "@/lib/utils";
-import { Clock, Package, Plus, Layers, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, Calculator, Loader2, Trash2, Save, Percent, Hash } from "lucide-react";
+import { Clock, Package, Plus, Layers, CheckCircle2, PlayCircle, CheckCheck, GitBranch, UserPlus, Check, X, Loader2, Trash2, Save, Percent, Hash } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -463,10 +463,10 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
               </div>
 
               <div className="pt-4 border-t border-gray-200 grid grid-cols-1 gap-4">
-                <div className="space-y-1.5 w-full">
+                <div className="space-y-1.5 w-full relative">
                   <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Añadir Material</Label>
                   <Input
-                    placeholder="Buscar material..."
+                    placeholder="Escribe para buscar ..."
                     value={materialSearch || materials.find(m => m.id === newMaterialId)?.name || ""}
                     onChange={(e) => {
                       setMaterialSearch(e.target.value.toUpperCase());
@@ -475,8 +475,17 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     onFocus={() => setMaterialSearch("")}
                     className="h-9 text-xs bg-white border-gray-200"
                   />
+                  {/* limpiar */}
                   {materialSearch && (
-                    <div className="absolute z-20 mt-1 w-full max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl animate-in fade-in slide-in-from-top-1 kanban-scroll">
+                    <button
+                      onClick={() => setMaterialSearch("")}
+                      className="absolute right-3 top-7 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md p-0.5 transition-all cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                  {(materialSearch || newMaterialId) && (
+                    <div className="absolute z-20 mt-1 max-w-[300px] max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl animate-in fade-in slide-in-from-top-1 kanban-scroll">
                       {materials
                         .filter(m => normalize(m.name).includes(normalize(materialSearch)) && !tempMaterials.some(tm => tm.id === m.id))
                         .map(m => (

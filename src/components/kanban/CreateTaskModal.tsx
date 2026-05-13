@@ -476,7 +476,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     className="h-9 text-xs bg-white border-gray-200"
                   />
                   {/* limpiar */}
-                  {materialSearch && (
+                  {(materialSearch || newMaterialId) && (
                     <button
                       onClick={() => setMaterialSearch("")}
                       className="absolute right-3 top-7 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md p-0.5 transition-all cursor-pointer"
@@ -484,7 +484,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                       <X size={16} />
                     </button>
                   )}
-                  {(materialSearch || newMaterialId) && (
+                  {materialSearch && (
                     <div className="absolute z-20 mt-1 max-w-[300px] max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl animate-in fade-in slide-in-from-top-1 kanban-scroll">
                       {materials
                         .filter(m => normalize(m.name).includes(normalize(materialSearch)) && !tempMaterials.some(tm => tm.id === m.id))
@@ -507,7 +507,7 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     <Label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cant x Und</Label>
                     <Input
                       type="number"
-                      step="0.1"
+                      step="0.01"
                       value={newMaterialQty || ""}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value);

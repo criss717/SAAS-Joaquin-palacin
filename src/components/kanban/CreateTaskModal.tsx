@@ -613,7 +613,13 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setParentId(t.id)}
+                      onClick={() => {
+                        if (predecessorIds.includes(t.id)) {
+                          Swal.fire('Error', 'No puedes pertenecer a una pieza que es tu propia dependencia.', 'error');
+                          return;
+                        }
+                        setParentId(t.id);
+                      }}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${parentId === t.id ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-white border-gray-100 text-gray-500 hover:border-blue-200"}`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -643,7 +649,13 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id])}
+                      onClick={() => {
+                        if (parentId === t.id) {
+                          Swal.fire('Error', 'No puedes depender de la pieza a la que perteneces.', 'error');
+                          return;
+                        }
+                        handlePredecessorChange(predecessorIds.includes(t.id) ? predecessorIds.filter(x => x !== t.id) : [...predecessorIds, t.id]);
+                      }}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${predecessorIds.includes(t.id) ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-white border-gray-100 text-gray-500 hover:border-gray-200"}`}
                     >
                       <span className="truncate">{t.name}</span>

@@ -251,19 +251,6 @@ export async function launchMachineToProject(machineId: string, projectName: str
     const partIdToTaskId = new Map<string, string>();
     const projectStartDate = new Date(startAt);
 
-    // Helper para obtener horas totales recursivas de una pieza (operaciones propias + hijas)
-    function getRecursiveHours(pId: string): number {
-      const part = machine!.parts.find(p => p.id === pId);
-      if (!part) return 0;
-
-      const ownHours = (part as any).estimatedHours || 0;
-      const directOpsHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
-      const childrenParts = machine!.parts.filter(p => p.parentId === pId);
-      const childrenHours = childrenParts.reduce((acc, child) => acc + getRecursiveHours(child.id), 0);
-
-      return ownHours + directOpsHours + childrenHours;
-    }
-
     // Identificar qué piezas son "Ensambles Reales" (tienen sub-piezas)
     const parentPartIds = new Set(machine.parts.map(p => p.parentId).filter(Boolean));
 
@@ -300,11 +287,9 @@ export async function launchMachineToProject(machineId: string, projectName: str
       // Cálculo de horas para este nodo (Ensambles suman recursivamente, piezas simples usan sus operaciones)
       const isAssembly = parentPartIds.has(part.id);
 
-      // El tiempo unitario es la suma de (horas propias de la pieza) + (operaciones directas o recursivas)
+      // El tiempo unitario: para ensambles usamos las horas definidas en el Excel (no sumar hijos)
       const partOpsHours = part.operations.reduce((acc, op) => acc + (op.estimatedHours || 0), 0);
-      const unitEstimatedHours = isAssembly
-        ? getRecursiveHours(part.id)
-        : (part.estimatedHours || 0) + partOpsHours;
+      const unitEstimatedHours = (part.estimatedHours || 0) + partOpsHours;
 
       // Las horas estimadas totales se escalan por la cantidad total
       // Para pedidos externos, las horas son 0 (el trabajo lo hace el proveedor)

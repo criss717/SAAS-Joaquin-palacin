@@ -530,13 +530,14 @@ export async function createTask(data: {
     })
   }
 
-  // Asignar el último orden disponible en esa etapa (count - 1 porque el create ya contó la nueva)
-  const count = await prisma.task.count({
-    where: { projectId: data.projectId, stage: data.stage }
+  // Desplazar tareas existentes +1 para insertar al inicio de la columna
+  await prisma.task.updateMany({
+    where: { projectId: data.projectId, stage: data.stage },
+    data: { orderIndex: { increment: 1 } }
   })
   const updatedTask = await prisma.task.update({
     where: { id: task.id },
-    data: { orderIndex: count - 1 },
+    data: { orderIndex: 0 },
     include: taskInclude
   })
 

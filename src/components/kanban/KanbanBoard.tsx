@@ -466,7 +466,7 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                 {stages
                   .filter(col => showDone || (!col.name.toLowerCase().includes("terminado") && !col.name.toLowerCase().includes("entregado")))
                   .map((column, colIndex) => {
-                    const columnTasks = filteredTasks.filter(t => t.stage === column.name);
+                    const columnTasks = filteredTasks.filter(t => t.stage === column.name).sort((a, b) => a.orderIndex - b.orderIndex);
 
                     return (
                       <KanbanColumn
@@ -543,7 +543,25 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
           setPreSelectedParentId(null);
         }}
         onTaskCreated={(newTask) => {
-          setTasks(prev => [...prev, newTask]);
+          setTasks(prev => {
+            let next = [...prev, newTask];
+            // Si tiene padre, actualizar la tarjeta del padre con la nueva sub-tarea
+            if (newTask.parentId) {
+              next = next.map(t => {
+                if (t.id === newTask.parentId) {
+                  const alreadyHasPred = t.predecessors.some(
+                    (p: { predecessor: { id: string } }) => p.predecessor.id === newTask.id
+                  );
+                  return alreadyHasPred ? t : {
+                    ...t,
+                    predecessors: [...t.predecessors, { predecessor: { id: newTask.id, name: newTask.name } }]
+                  };
+                }
+                return t;
+              });
+            }
+            return next;
+          });
           setShowCreateTask(false);
           setPreSelectedStage(undefined);
           setPreSelectedParentId(null);

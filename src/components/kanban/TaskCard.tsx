@@ -3,7 +3,7 @@
 import React, { memo } from "react";
 import { Draggable } from "@hello-pangea/dnd";
 import { Package, ChevronDown, ChevronUp, CheckCircle2, PlayCircle, AlertCircle, CheckCheck, XCircle, Percent, Trash2 } from "lucide-react";
-import { TaskWithRelations, deleteTask } from "@/lib/actions/tasks";
+import { TaskWithRelations, deleteTask, deleteTaskOrphanChildren } from "@/lib/actions/tasks";
 import Swal from "sweetalert2";
 
 interface TaskCardProps {
@@ -15,7 +15,7 @@ interface TaskCardProps {
   allTasks: TaskWithRelations[]; // Añadimos allTasks para el 2do nivel
   onToggleExpand: (id: string, e: React.MouseEvent) => void;
   onSelectTask: (task: TaskWithRelations) => void;
-  onDeleteTask: (taskId: string) => void;
+  onDeleteTask: (taskId: string, orphanChildren?: boolean) => void;
 }
 
 export const TaskCard = memo(({
@@ -49,11 +49,37 @@ export const TaskCard = memo(({
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    const childrenCount = task.subTasks?.length || 0;
+
+    if (childrenCount > 0) {
+      const result = await Swal.fire({
+        title: "¿Eliminar tarea?",
+        html: `Esta tarea tiene <strong>${childrenCount} sub-tarea(s)</strong>.<br/><br/>¿Qué deseas hacer con ellas?`,
+        icon: "warning",
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: "Eliminar todo",
+        denyButtonText: "Solo esta tarea",
+        cancelButtonText: "Cancelar",
+        confirmButtonColor: "#ef4444",
+        denyButtonColor: "#f59e0b",
+        heightAuto: false
+      });
+
+      if (result.isConfirmed) {
+        onDeleteTask(task.id);
+        await deleteTask(task.id);
+      } else if (result.isDenied) {
+        onDeleteTask(task.id, true);
+        await deleteTaskOrphanChildren(task.id);
+      }
+      return;
+    }
+
     const result = await Swal.fire({
       title: "¿Eliminar tarea?",
-      text: task.isAssembly
-        ? "¡Cuidado! Esto eliminará también todas las sub-piezas y tareas vinculadas."
-        : "Esta acción no se puede deshacer.",
+      text: "Esta acción no se puede deshacer.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#ef4444",

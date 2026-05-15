@@ -692,6 +692,18 @@ export async function deleteTask(taskId: string) {
   revalidatePath("/gantt")
 }
 
+/** Elimina una tarea desvinculando primero sus hijos (les quita el parentId) */
+export async function deleteTaskOrphanChildren(taskId: string) {
+  await requireAuth()
+  await prisma.task.updateMany({
+    where: { parentId: taskId },
+    data: { parentId: null }
+  })
+  await prisma.task.delete({ where: { id: taskId } })
+  revalidatePath("/")
+  revalidatePath("/gantt")
+}
+
 /** Lista todos los usuarios — para asignar en tareas */
 export async function getUsers() {
   await requireAuth()

@@ -113,9 +113,13 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
     });
   };
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleDeleteTask = (taskId: string, orphanChildren: boolean = false) => {
     setTasks(prev => {
-      // Identificar todos los descendientes recursivamente
+      if (orphanChildren) {
+        // Solo eliminar el padre, desvincular hijos
+        return prev.map(t => t.id === taskId ? null : (t.parentId === taskId ? { ...t, parentId: null } : t)).filter(Boolean) as TaskWithRelations[];
+      }
+      // Eliminación en cascada (comportamiento por defecto)
       const idsToDelete = new Set([taskId]);
       let changed = true;
       while (changed) {
@@ -544,7 +548,12 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
         }}
         onTaskCreated={(newTask) => {
           setTasks(prev => {
-            let next = [...prev, newTask];
+            // Desplazar orderIndex +1 a tareas existentes en la misma etapa
+            let next = prev.map(t => 
+              t.stage === newTask.stage ? { ...t, orderIndex: t.orderIndex + 1 } : t
+            );
+            // Añadir la nueva al inicio
+            next.push({ ...newTask, orderIndex: 0 });
             // Si tiene padre, actualizar la tarjeta del padre con la nueva sub-tarea
             if (newTask.parentId) {
               next = next.map(t => {
@@ -552,9 +561,13 @@ export function KanbanBoard({ initialTasks, initialStages, users, isAdmin, proje
                   const alreadyHasPred = t.predecessors.some(
                     (p: { predecessor: { id: string } }) => p.predecessor.id === newTask.id
                   );
-                  return alreadyHasPred ? t : {
+                  const alreadyHasSub = t.subTasks.some(
+                    (s: { id: string }) => s.id === newTask.id
+                  );
+                  return (alreadyHasPred && alreadyHasSub) ? t : {
                     ...t,
-                    predecessors: [...t.predecessors, { predecessor: { id: newTask.id, name: newTask.name } }]
+                    predecessors: alreadyHasPred ? t.predecessors : [...t.predecessors, { predecessor: { id: newTask.id, name: newTask.name } }],
+                    subTasks: alreadyHasSub ? t.subTasks : [...t.subTasks, { id: newTask.id, name: newTask.name, stage: newTask.stage, status: newTask.status }]
                   };
                 }
                 return t;

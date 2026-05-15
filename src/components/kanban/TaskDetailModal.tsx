@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
-import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, updateTaskQuantity, updateTaskIsAssembly, getProjectMaterialsSummary, addMaterialToTask, removeMaterialFromTask, updateTaskDeliveryDays } from "@/lib/actions/tasks";
+import { updateTaskStage, updateTaskDatesAndCascade, updateTaskAssignees, updateTaskStatus, updateTaskProgress, updateTaskPredecessors, updateTaskParent, updateTaskName, type TaskWithRelations, type TaskAssignee, deleteTask, deleteTaskOrphanChildren, updateTaskQuantity, updateTaskIsAssembly, getProjectMaterialsSummary, addMaterialToTask, removeMaterialFromTask, updateTaskDeliveryDays } from "@/lib/actions/tasks";
 import { updateCatalogFromTask, updateCatalogMaterialsFromTask } from "@/lib/actions/catalog";
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { downloadMaterialReport } from "@/lib/utils/excel";
@@ -30,7 +30,7 @@ type Props = {
   onClose: () => void
   onTaskUpdated: (updated: TaskWithRelations) => void
   onCreateSubTask?: (parentId: string) => void
-  onDeleteTask: (taskId: string) => void
+  onDeleteTask: (taskId: string, orphanChildren?: boolean) => void
   materials: { id: string; name: string }[]
   unitTypes: { id: string; name: string }[]
 }
@@ -573,6 +573,9 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                 ...oldParent,
                 predecessors: oldParent.predecessors.filter(
                   (p: { predecessor: { id: string } }) => p.predecessor.id !== task.id
+                ),
+                subTasks: oldParent.subTasks.filter(
+                  (s: { id: string }) => s.id !== task.id
                 )
               };
               onTaskUpdated(updatedOldParent);
@@ -585,11 +588,17 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               const alreadyHasPred = parentTask.predecessors.some(
                 (p: { predecessor: { id: string } }) => p.predecessor.id === task.id
               );
+              const alreadyHasSub = parentTask.subTasks.some(
+                (s: { id: string }) => s.id === task.id
+              );
               const updatedParent = {
                 ...parentTask,
                 predecessors: alreadyHasPred
                   ? parentTask.predecessors
-                  : [...parentTask.predecessors, { predecessor: { id: task.id, name: localName } }]
+                  : [...parentTask.predecessors, { predecessor: { id: task.id, name: localName } }],
+                subTasks: alreadyHasSub
+                  ? parentTask.subTasks
+                  : [...parentTask.subTasks, { id: task.id, name: localName, stage: selectedStage, status: selectedStatus }]
               };
               onTaskUpdated(updatedParent);
             }
@@ -664,11 +673,46 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const handleDelete = async () => {
     if (!task) return;
 
+    const childrenCount = task.subTasks?.length || 0;
+
+    if (childrenCount > 0) {
+      const result = await Swal.fire({
+        title: "¿Eliminar esta tarea?",
+        html: `Esta tarea tiene <strong>${childrenCount} sub-tarea(s)</strong>.<br/><br/>¿Qué deseas hacer con ellas?`,
+        icon: "warning",
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: "Eliminar todo",
+        denyButtonText: "Solo esta tarea",
+        cancelButtonText: "Cancelar",
+        confirmButtonColor: "#ef4444",
+        denyButtonColor: "#f59e0b",
+        heightAuto: false
+      });
+
+      if (result.isConfirmed) {
+        // Eliminar todo (padre + hijos por cascade)
+        startTransition(async () => {
+          onDeleteTask(task.id);
+          await deleteTask(task.id);
+          onClose();
+        });
+      } else if (result.isDenied) {
+        // Solo eliminar el padre, desvincular hijos
+        startTransition(async () => {
+          onDeleteTask(task.id, true);
+          await deleteTaskOrphanChildren(task.id);
+          onClose();
+        });
+      }
+      // Cancelar → no hace nada
+      return;
+    }
+
+    // Sin hijos: eliminación simple
     const result = await Swal.fire({
       title: "¿Eliminar esta tarea?",
-      text: task.isAssembly
-        ? "¡Cuidado! Se eliminarán también todas las sub-piezas y tareas vinculadas a este ensamble."
-        : "Esta acción eliminará la pieza definitivamente.",
+      text: "Esta acción eliminará la pieza definitivamente.",
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#ef4444",

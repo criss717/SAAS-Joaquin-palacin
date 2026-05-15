@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Gantt, Task, ViewMode } from "@rsagiev/gantt-task-react-19";
 import "@rsagiev/gantt-task-react-19/dist/index.css";
 import { TaskWithRelations } from "@/lib/actions/tasks";
@@ -129,6 +129,36 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
 
   const ganttTasks = toGanttTasks(tasks, groupBy);
 
+  // Calcular rango de fechas para auto-zoom en modo Mes
+  const dateRangeMonths = useMemo(() => {
+    const starts = tasks.map(t => new Date(t.startDate).getTime()).filter(t => !isNaN(t));
+    const ends = tasks.map(t => new Date(t.endDate).getTime()).filter(t => !isNaN(t));
+    if (starts.length === 0) return 0;
+    const min = Math.min(...starts);
+    const max = Math.max(...ends);
+    return (max - min) / (1000 * 60 * 60 * 24 * 30);
+  }, [tasks]);
+
+  // Auto-zoom al cambiar de modo de vista
+  useEffect(() => {
+    const defaults: Record<string, number> = {
+      [ViewMode.Month]: dateRangeMonths > 5 ? 0.5 : 0.8,
+      [ViewMode.Week]: 0.3,
+      [ViewMode.Day]: 0.8,
+      [ViewMode.Hour]: 0.4,
+    };
+    setZoomLevel(defaults[viewMode] ?? 0.5);
+  }, [viewMode, dateRangeMonths]);
+
+  // Mínimos de zoom según modo
+  const minZoom: Record<string, number> = {
+    [ViewMode.Month]: 0.3,
+    [ViewMode.Week]: 0.1,
+    [ViewMode.Day]: 0.7,
+    [ViewMode.Hour]: 0.2,
+  };
+  const currentMinZoom = minZoom[viewMode] ?? 0.1;
+
   const handleTaskChange = async (ganttTask: Task) => {
     // Validar que las fechas son válidas antes de persistir
     if (!ganttTask.start || !ganttTask.end) return
@@ -205,8 +235,8 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             <span className="text-[10px] font-bold uppercase tracking-wider">Zoom</span>
           </div>
           <button
-            onClick={() => setZoomLevel(prev => Math.max(0.3, prev - 0.1))}
-            disabled={zoomLevel <= 0.3}
+            onClick={() => setZoomLevel(prev => Math.max(currentMinZoom, prev - 0.1))}
+            disabled={zoomLevel <= currentMinZoom}
             className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-50 disabled:opacity-30 cursor-pointer transition-all"
             title="Alejar"
           >
@@ -224,7 +254,7 @@ export function GanttChart({ tasks, onTaskDatesChange, onTaskDoubleClick }: Prop
             <ZoomIn size={16} />
           </button>
           <button
-            onClick={() => setZoomLevel(0.5)}
+            onClick={() => setZoomLevel(currentMinZoom === 0.7 ? 0.8 : currentMinZoom === 0.2 ? 0.4 : 0.5)}
             className="ml-1 px-2 py-1 text-[9px] font-bold text-blue-600 hover:bg-blue-50 rounded-md cursor-pointer transition-all"
           >
             RESET

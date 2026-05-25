@@ -22,7 +22,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# 🚨 CLAVE: Copiamos todo asegurando que el usuario 'node' sea el propietario real
+# Copiamos todo asegurando que el usuario 'node' sea el propietario
 COPY --chown=node:node package.json pnpm-lock.yaml ./
 COPY --chown=node:node prisma ./prisma/
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
@@ -34,5 +34,4 @@ USER node
 
 EXPOSE 3000
 
-# Next.js expone su binario directamente en node_modules.
-CMD ["node", "node_modules/.bin/next", "start"]
+CMD ["node", "node_modules/next/dist/bin/next", "start"]

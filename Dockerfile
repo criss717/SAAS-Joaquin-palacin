@@ -6,12 +6,9 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENV CI=true
 
-# Le dice a pnpm qué paquetes tienen permiso explícito para compilar
-ENV PNPM_ALLOW_BUILDS=prisma,@prisma/engines,esbuild,sharp,msw,unrs-resolver
-
 COPY package.json pnpm-lock.yaml ./
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # --- ETAPA 2: COMPILACIÓN (BUILD) ---
 FROM node:22-slim AS builder
@@ -33,16 +30,16 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENV NODE_ENV=production
 ENV CI=true
-# 🔓 También lo añadimos aquí para el mini install de producción
-ENV PNPM_ALLOW_BUILDS=prisma,@prisma/engines,esbuild,sharp,msw,unrs-resolver
 
 COPY package.json pnpm-lock.yaml ./
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+
+USER node
 
 EXPOSE 3000
 

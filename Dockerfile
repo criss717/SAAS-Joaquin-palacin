@@ -33,11 +33,14 @@ ENV CI=true
 
 COPY package.json pnpm-lock.yaml ./
 
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
+# 2. Copiamos los archivos generados del constructor
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+
+RUN pnpm prisma generate
 
 USER node
 

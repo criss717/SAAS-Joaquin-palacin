@@ -1,24 +1,22 @@
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
 WORKDIR /app
 
-# instalar pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
-RUN pnpm config set enable-pre-post-scripts true
-RUN pnpm approve-builds --all --yes || true
 
-# deps
+ENV CI=true
+
 COPY package.json pnpm-lock.yaml ./
+
+# instalar deps
 RUN pnpm install --frozen-lockfile
 
 # copiar app
 COPY . .
 
-# prisma generate (IMPORTANTE)
 RUN pnpm prisma generate
 
-# build
+# build Next
 RUN pnpm build
-
 
 # -------------------------
 FROM node:22-alpine AS runner

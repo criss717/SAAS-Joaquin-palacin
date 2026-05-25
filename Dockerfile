@@ -3,6 +3,8 @@ WORKDIR /app
 
 # instalar pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN pnpm config set enable-pre-post-scripts true
+RUN pnpm approve-builds --all --yes || true
 
 # deps
 COPY package.json pnpm-lock.yaml ./

@@ -21,6 +21,7 @@
     "cmdk": "1.1.1",
     "date-fns": "4.1.0",
     "exceljs": "4.4.0",
+    "hono": "^4.12.22",
     "lucide-react": "0.577.0",
     "next": "16.2.6",
     "next-auth": "4.24.14",
@@ -38,12 +39,11 @@
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.4",
     "@types/bcryptjs": "2.4.6",
-    "@types/node": "20.17.19",
+    "@types/node": "^25.9.1",
     "@types/nodemailer": "7.0.11",
     "@types/pg": "8.18.0",
     "@types/react": "19.0.8",
     "@types/react-dom": "19.0.3",
-    "@vitejs/plugin-react": "^6.0.1",
     "eslint": "9.0.0",
     "eslint-config-next": "16.1.7",
     "jsdom": "^29.1.1",
@@ -67,7 +67,6 @@
     "lodash": "4.17.23",
     "postcss": "8.5.10",
     "uuid": "11.0.0",
-    "hono": "4.12.14",
     "@hono/node-server": "1.19.13",
     "effect": "3.20.0"
   }

@@ -33,14 +33,16 @@ ENV CI=true
 
 COPY package.json pnpm-lock.yaml ./
 
+# 1. Instalamos solo dependencias de producción (sin la CLI de prisma)
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
-# 2. Copiamos los archivos generados del constructor
+# 2. Copiamos los artefactos de la compilación de Next.js
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
-RUN pnpm prisma generate
+# copiamos la carpeta donde Prisma autogenera el cliente por defecto.
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 USER node
 

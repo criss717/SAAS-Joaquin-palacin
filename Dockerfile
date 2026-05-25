@@ -5,7 +5,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENV CI=true
-n
+
 RUN pnpm config set ignore-scripts false
 RUN pnpm config set side-effects-cache false
 

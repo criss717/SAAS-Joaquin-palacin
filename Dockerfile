@@ -20,25 +20,19 @@ RUN pnpm prune --prod
 FROM node:22-slim AS runner
 WORKDIR /app
 
-# Configurar variables de entorno y directorios de caché para el usuario node
 ENV NODE_ENV=production
-ENV CI=true
-ENV PNPM_HOME="/home/node/.local/share/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Asegurar los directorios del usuario node antes de copiar
-RUN mkdir -p /home/node/.cache /home/node/.local/share/pnpm && chown -R node:node /home/node
-
-# Copiamos los archivos asignando explícitamente la propiedad al usuario 'node'
+# 🚨 CLAVE: Copiamos todo asegurando que el usuario 'node' sea el propietario real
 COPY --chown=node:node package.json pnpm-lock.yaml ./
 COPY --chown=node:node prisma ./prisma/
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --from=builder --chown=node:node /app/.next ./.next
-COPY --from=builder --chown=node:node /app/public ./public
+COPY --chown=node:node --from=builder /app/.next ./.next
+COPY --chown=node:node --from=builder /app/public ./public
 
+# Cambiamos al usuario sin privilegios
 USER node
 
 EXPOSE 3000
-CMD ["pnpm", "start"]
+
+# Next.js expone su binario directamente en node_modules.
+CMD ["node", "node_modules/.bin/next", "start"]

@@ -6,12 +6,11 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENV CI=true
 
-RUN pnpm config set ignore-scripts false
-RUN pnpm config set side-effects-cache false
+# Le dice a pnpm qué paquetes tienen permiso explícito para compilar
+ENV PNPM_ALLOW_BUILDS=prisma,@prisma/engines,esbuild,sharp,msw,unrs-resolver
 
 COPY package.json pnpm-lock.yaml ./
 
-# Ahora instalará sin importar las advertencias de supply-chain
 RUN pnpm install --frozen-lockfile
 
 # --- ETAPA 2: COMPILACIÓN (BUILD) ---
@@ -34,9 +33,8 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENV NODE_ENV=production
 ENV CI=true
-
-# 🛠️ CONFIGURACIÓN CRÍTICA: También en el entorno de producción
-RUN pnpm config set ignore-scripts false
+# 🔓 También lo añadimos aquí para el mini install de producción
+ENV PNPM_ALLOW_BUILDS=prisma,@prisma/engines,esbuild,sharp,msw,unrs-resolver
 
 COPY package.json pnpm-lock.yaml ./
 

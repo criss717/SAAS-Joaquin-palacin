@@ -245,6 +245,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   }, [localQuantity]);
 
   const onStartDateChange = (val: string) => {
+    if (!val || val.length < 16) return;
+    const year=Number(val.substring(0, 4));
+    const yearMin = new Date().getFullYear() - 5;
+    const yearMax = new Date().getFullYear() + 5;
+    if (year < yearMin || year > yearMax) {
+      setError(`Año fuera de rango (${yearMin}-${yearMax})`);
+      return;
+    }
     setStartDate(val);
     if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
     const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
@@ -257,6 +265,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   };
 
   const onEndDateChange = (val: string) => {
+    if (!val || val.length < 16) return;
+    const year=Number(val.substring(0, 4));
+    const yearMin = new Date().getFullYear() - 5;
+    const yearMax = new Date().getFullYear() + 5;
+    if (year < yearMin || year > yearMax) {
+      setError(`Año fuera de rango (${yearMin}-${yearMax})`);
+      return;
+    }
     setEndDate(val);
     const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
     if (isExt && startDate) {
@@ -424,7 +440,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = async () => {  
     if (!localName.trim()) {
       setError("El nombre es obligatorio");
       return;

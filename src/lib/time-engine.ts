@@ -19,12 +19,16 @@ export class TimeEngine {
   addBusinessHours(startDate: Date, hoursToAdd: number): Date {
     let current = new Date(startDate);
     let remaining = hoursToAdd;
+    let safetyCounter = 0; // Guardarriel anti-colapso
+
+    if (remaining <= 0) return current;
 
     // Lógica simplificada inicial: Si no hay horas que añadir, devolver inicio
     if (remaining <= 0) return current;
 
     // Iterar hasta consumir todas las horas
-    while (remaining > 0) {
+    while (remaining > 0 && safetyCounter < 1000) {
+      safetyCounter++; // Si pasa de 1000 iteraciones (casi 3 años de Gantt continuos), sale por seguridad
       const schedule = this.getScheduleForDate(current);
       if (!schedule || this.isHoliday(current) || !this.isWorkingDay(current, schedule)) {
         // Ir al inicio del día siguiente (00:00)
@@ -56,7 +60,8 @@ export class TimeEngine {
         const availableMs = shiftEnd.getTime() - actualStart.getTime();
         const availableHours = availableMs / (1000 * 60 * 60);
 
-        if (remaining <= availableHours) {
+        // Usamos una pequeña tolerancia para errores de redondeo float (0.0001)
+        if (remaining <= availableHours + 0.0001) {
           // La tarea termina en este turno
           current = new Date(actualStart.getTime() + remaining * 60 * 60 * 1000);
           remaining = 0;
@@ -99,6 +104,13 @@ export class TimeEngine {
       }
 
       const shifts = JSON.parse(schedule.shifts) as { start: string, end: string }[];
+
+      // Resguardo: Si no hay turnos configurados, avanzamos el día para evitar bucle eterno
+      if (!shifts || shifts.length === 0) {
+        current.setDate(current.getDate() + 1);
+        current.setHours(0, 0, 0, 0);
+        continue;
+      }   
       
       // Analizar cada turno del día activo
       for (const shift of shifts) {

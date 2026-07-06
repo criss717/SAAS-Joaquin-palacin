@@ -212,12 +212,28 @@ export function CreateTaskModal({ open, projectId, stages, users, allTasks, init
   }, [quantity]);
 
   const onStartDateChange = (val: string) => {
+    if (!val || val.length < 16) return;
+    const year=Number(val.substring(0, 4));
+    const yearMin = new Date().getFullYear() - 5;
+    const yearMax = new Date().getFullYear() + 5;
+    if (year < yearMin || year > yearMax) {
+      setError(`Año fuera de rango (${yearMin}-${yearMax})`);
+      return;
+    }
     setStartDate(val);
     if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
     calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 500);
   };
 
   const onEndDateChange = (val: string) => {
+    if (!val || val.length < 16) return;
+    const year=Number(val.substring(0, 4));
+    const yearMin = new Date().getFullYear() - 5;
+    const yearMax = new Date().getFullYear() + 5;
+    if (year < yearMin || year > yearMax) {
+      setError(`Año fuera de rango (${yearMin}-${yearMax})`);
+      return;
+    }
     setEndDate(val);
     if (calcHoursTimer.current) clearTimeout(calcHoursTimer.current);
     calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 500);

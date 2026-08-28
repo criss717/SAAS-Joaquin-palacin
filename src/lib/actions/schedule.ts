@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
@@ -22,7 +22,23 @@ async function requireAdmin() {
 }
 
 /**
- * Recalcula automáticamente todas las tareas activas (no terminadas ni canceladas)
+ * Normaliza una fecha o string YYYY-MM-DD a las 12:00:00 UTC (medio día)
+ * para evitar desplazamientos por huso horario (ej: UTC en Docker vs UTC+2 en navegador).
+ */
+function normalizeDateToMidday(val: Date | string): Date {
+  if (typeof val === "string") {
+    const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, y, m, d] = match;
+      return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 12, 0, 0));
+    }
+  }
+  const d = new Date(val);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0));
+}
+
+/**
+ * Recalcula automáticamente todas las tareas activas de taller (no terminadas ni canceladas)
  * de uno o todos los proyectos cuando se actualiza el calendario laboral (horarios, turnos, festivos o horas extras).
  */
 export async function recalculateActiveProjectSchedules(targetProjectId?: string) {
@@ -116,7 +132,14 @@ export async function recalculateActiveProjectSchedules(targetProjectId?: string
           task.stage === "Pedido Externo" ||
           task.stage === "Entregado Externo";
 
-        // Determinar fecha de inicio
+        // Los pedidos externos NO dependen del calendario ni turnos de taller: se conservan intactos
+        if (isExternal) {
+          effectiveStartDates.set(task.id, new Date(task.startDate));
+          effectiveEndDates.set(task.id, new Date(task.endDate));
+          continue;
+        }
+
+        // Determinar fecha de inicio para tareas de taller
         let newStart: Date;
         if (task.predecessors.length > 0) {
           // Tomar la fecha de fin más tardía de todas sus predecesoras
@@ -129,30 +152,18 @@ export async function recalculateActiveProjectSchedules(targetProjectId?: string
           }
 
           if (maxPredEnd) {
-            newStart = isExternal
-              ? new Date(maxPredEnd)
-              : engine.getNextAvailableWorkingSlot(maxPredEnd);
+            newStart = engine.getNextAvailableWorkingSlot(maxPredEnd);
           } else {
-            newStart = isExternal
-              ? new Date(task.startDate)
-              : engine.getNextAvailableWorkingSlot(new Date(task.startDate));
+            newStart = engine.getNextAvailableWorkingSlot(new Date(task.startDate));
           }
         } else {
-          // Tarea raíz sin predecesoras: conservar fecha o alinear al primer slot laborable
-          newStart = isExternal
-            ? new Date(task.startDate)
-            : engine.getNextAvailableWorkingSlot(new Date(task.startDate));
+          // Tarea raíz sin predecesoras: alinear al primer slot laborable
+          newStart = engine.getNextAvailableWorkingSlot(new Date(task.startDate));
         }
 
-        // Determinar fecha de fin
-        let newEnd: Date;
-        if (isExternal) {
-          const days = task.deliveryDays && task.deliveryDays > 0 ? task.deliveryDays : 7;
-          newEnd = addCalendarDays(newStart, days);
-        } else {
-          const hours = task.estimatedHours && task.estimatedHours > 0 ? task.estimatedHours : 8;
-          newEnd = engine.addBusinessHours(newStart, hours);
-        }
+        // Determinar fecha de fin según motor laboral
+        const hours = task.estimatedHours && task.estimatedHours > 0 ? task.estimatedHours : 8;
+        const newEnd = engine.addBusinessHours(newStart, hours);
 
         effectiveStartDates.set(task.id, newStart);
         effectiveEndDates.set(task.id, newEnd);
@@ -201,25 +212,29 @@ export async function getWorkSchedules() {
 export async function upsertWorkSchedule(data: {
   id?: string;
   name: string;
-  validFrom: Date;
-  validUntil: Date;
+  validFrom: Date | string;
+  validUntil: Date | string;
   workingDays: number[];
   shifts: { start: string; end: string }[];
 }) {
   try {
     await requireAdmin();
 
-    const vf = new Date(data.validFrom);
-    vf.setHours(0, 0, 0, 0);
-    const vu = new Date(data.validUntil);
-    vu.setHours(23, 59, 59, 999);
+    const vf = normalizeDateToMidday(data.validFrom);
+    const vu = normalizeDateToMidday(data.validUntil);
+
+    // Para la validación de solapamiento en BD
+    const queryVf = new Date(vf);
+    queryVf.setUTCHours(0, 0, 0, 0);
+    const queryVu = new Date(vu);
+    queryVu.setUTCHours(23, 59, 59, 999);
 
     // 1. Validar solapamiento: solo rechazar si hay otra temporada con los MISMOS días en el mismo rango de fechas
     const existing = await prisma.workSchedule.findMany({
       where: {
         id: data.id ? { not: data.id } : undefined,
-        validFrom: { lte: vu },
-        validUntil: { gte: vf }
+        validFrom: { lte: queryVu },
+        validUntil: { gte: queryVf }
       }
     });
 
@@ -293,14 +308,11 @@ export async function getHolidays() {
   });
 }
 
-export async function createHoliday(name: string, startDate: Date, endDate?: Date) {
+export async function createHoliday(name: string, startDate: Date | string, endDate?: Date | string) {
   try {
     await requireAdmin();
-    const s = new Date(startDate);
-    s.setHours(0, 0, 0, 0);
-    
-    const e = endDate ? new Date(endDate) : new Date(startDate);
-    e.setHours(23, 59, 59, 999);
+    const s = normalizeDateToMidday(startDate);
+    const e = endDate ? normalizeDateToMidday(endDate) : normalizeDateToMidday(startDate);
 
     await prisma.holiday.create({
       data: { 
@@ -321,16 +333,14 @@ export async function createHoliday(name: string, startDate: Date, endDate?: Dat
   }
 }
 
-export async function createHolidayBatch(name: string, dates: { start: Date; end?: Date }[]) {
+export async function createHolidayBatch(name: string, dates: { start: Date | string; end?: Date | string }[]) {
   try {
     await requireAdmin();
     
     await prisma.holiday.createMany({
       data: dates.map(d => {
-        const s = new Date(d.start);
-        s.setHours(0, 0, 0, 0);
-        const e = d.end ? new Date(d.end) : new Date(d.start);
-        e.setHours(23, 59, 59, 999);
+        const s = normalizeDateToMidday(d.start);
+        const e = d.end ? normalizeDateToMidday(d.end) : normalizeDateToMidday(d.start);
         return { name, startDate: s, endDate: e };
       })
     });

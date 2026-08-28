@@ -21,6 +21,24 @@ type Props = {
   initialHolidays: Holiday[];
 };
 
+function toCalendarInput(d: Date | string): string {
+  if (!d) return "";
+  if (typeof d === "string") {
+    const match = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return "";
+  return format(date, "yyyy-MM-dd");
+}
+
+function formatCalendarDisplay(d: Date | string, fmt: string = "dd MMM yyyy"): string {
+  if (!d) return "";
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return "";
+  return format(date, fmt, { locale: es });
+}
+
 export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
   const router = useRouter();
 
@@ -61,8 +79,8 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
     const res = await upsertWorkSchedule({
       id: (isEditing && isEditing !== "new") ? isEditing : undefined,
       name,
-      validFrom: new Date(from),
-      validUntil: new Date(until),
+      validFrom: from,
+      validUntil: until,
       workingDays,
       shifts
     });
@@ -80,7 +98,7 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
     if (!hName) return toast.error("Falta el nombre del festivo.");
 
     if (holidayMode === "multi" && hMultiDates.length > 0) {
-      const dates = hMultiDates.map(d => ({ start: new Date(d) }));
+      const dates = hMultiDates.map(d => ({ start: d }));
       const res = await createHolidayBatch(hName, dates);
       if (res.success) {
         toast.success(`${hMultiDates.length} festivos añadidos.`);
@@ -95,8 +113,9 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
     if (holidayMode === "months" && hMonths.length > 0) {
       const dates = hMonths.map(m => {
         const [year, month] = m.split("-").map(Number);
-        const start = new Date(year, month, 1);
-        const end = new Date(year, month + 1, 0);
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+        const end = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
         return { start, end };
       });
       const res = await createHolidayBatch(hName, dates);
@@ -111,7 +130,7 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
     }
 
     if (holidayMode === "range" && hDate && hEndDate) {
-      const res = await createHoliday(hName, new Date(hDate), new Date(hEndDate));
+      const res = await createHoliday(hName, hDate, hEndDate);
       if (res.success) {
         toast.success("Festivo (rango) añadido.");
         setHName(""); setHDate(""); setHEndDate("");
@@ -123,7 +142,7 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
     }
 
     if (!hDate) return toast.error("Falta la fecha del festivo.");
-    const res = await createHoliday(hName, new Date(hDate));
+    const res = await createHoliday(hName, hDate);
     if (res.success) {
       toast.success("Festivo añadido.");
       setHName(""); setHDate(""); setHEndDate("");
@@ -268,8 +287,8 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
                     <Button variant="ghost" size="sm" onClick={() => {
                       setIsEditing(s.id);
                       setName(s.name);
-                      setFrom(format(new Date(s.validFrom), "yyyy-MM-dd"));
-                      setUntil(format(new Date(s.validUntil), "yyyy-MM-dd"));
+                      setFrom(toCalendarInput(s.validFrom));
+                      setUntil(toCalendarInput(s.validUntil));
                       setWorkingDays(JSON.parse(s.workingDays));
                       setShifts(JSON.parse(s.shifts));
                     }} className="text-gray-400 hover:text-blue-600 p-0.5 h-8 w-8"><Pencil size={14} /></Button>
@@ -301,7 +320,7 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center gap-2 text-xs font-bold text-gray-500 bg-white border border-gray-100 rounded-lg p-2">
                     <Calendar size={12} className="text-blue-500" />
-                    {format(new Date(s.validFrom), "dd MMM yyyy", { locale: es })} - {format(new Date(s.validUntil), "dd MMM yyyy", { locale: es })}
+                    {formatCalendarDisplay(s.validFrom)} - {formatCalendarDisplay(s.validUntil)}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {JSON.parse(s.shifts).map((sh: { start: string; end: string }, i: number) => (
@@ -462,11 +481,11 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
                     <div>
                       <div className="text-xs font-black text-gray-800 uppercase">{h.name}</div>
                       <div className="text-[10px] text-gray-400 font-bold">
-                        {format(new Date(h.startDate), "dd MMM", { locale: es })}
-                        {h.endDate && format(new Date(h.startDate), "yyyy-MM-dd") !== format(new Date(h.endDate), "yyyy-MM-dd") && (
-                          <> - {format(new Date(h.endDate), "dd MMM", { locale: es })}</>
+                        {formatCalendarDisplay(h.startDate, "dd MMM")}
+                        {h.endDate && toCalendarInput(h.startDate) !== toCalendarInput(h.endDate) && (
+                          <> - {formatCalendarDisplay(h.endDate, "dd MMM")}</>
                         )}
-                        {", " + format(new Date(h.startDate), "yyyy")}
+                        {", " + formatCalendarDisplay(h.startDate, "yyyy")}
                       </div>
                     </div>
                     <Button variant="ghost" size="sm" onClick={async () => {

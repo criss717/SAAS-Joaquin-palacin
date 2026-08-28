@@ -3,7 +3,7 @@
 import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { addExternalDays } from "@/lib/external-calendar";
+import { addCalendarDays } from "@/lib/external-calendar";
 
 export async function setActiveProjectCookie(projectId: string) {
   const cookieStore = await cookies();
@@ -105,34 +105,8 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
     const holidays = await prisma.holiday.findMany();
     const engine = new TimeEngine(schedules, holidays);
 
-    // Helper para normalizar: si una fecha cae en un periodo no laborable, mover al inicio de la siguiente jornada
-    const normalizeToWorkStart = (date: Date) => {
-      const d = new Date(date);
-      let attempts = 0;
-
-      // Mientras estemos en un periodo no laborable o fuera de horario (8 a 18), avanzamos
-      while (attempts < 365) { // Seguridad contra bucles infinitos
-        const schedule = engine.getScheduleForDate(d);
-        const isLaborable = engine.isWorkingDay(d, schedule) && !engine.isHoliday(d);
-        const hour = d.getHours();
-
-        if (isLaborable && hour >= 8 && hour < 18) {
-          break;
-        }
-
-        if (!isLaborable || hour >= 18) {
-          d.setDate(d.getDate() + 1);
-          d.setHours(8, 0, 0, 0);
-        } else if (hour < 8) {
-          d.setHours(8, 0, 0, 0);
-        }
-        attempts++;
-      }
-      return d;
-    };
-
     // 2. Normalizar el propio inicio del proyecto y calcular delta
-    const newStart = normalizeToWorkStart(newStartRaw);
+    const newStart = engine.getNextAvailableWorkingSlot(newStartRaw);
     const isForward = newStart >= oldStart;
     const absDeltaHours = isForward
       ? engine.calculateBusinessHours(oldStart, newStart)
@@ -158,20 +132,20 @@ export async function shiftProjectDates(projectId: string, newStartDate: Date) {
 
         if (deltaHours >= 0) {
           // Desplazar inicio
-          newTaskStart = normalizeToWorkStart(engine.addBusinessHours(oldTaskStart, deltaHours));
+          newTaskStart = engine.getNextAvailableWorkingSlot(engine.addBusinessHours(oldTaskStart, deltaHours));
 
           if ((t.deliveryDays || 0) > 0) {
             // Pedido externo: usa calendario genérico de proveedores (sin agosto)
-            newTaskEnd = addExternalDays(newTaskStart, t.deliveryDays!);
+            newTaskEnd = addCalendarDays(newTaskStart, t.deliveryDays!);
           } else {
             // Fabricación/Otros: Desplazar fin por el mismo delta y normalizarlo
-            newTaskEnd = normalizeToWorkStart(engine.addBusinessHours(oldTaskEnd, deltaHours));
+            newTaskEnd = engine.getNextAvailableWorkingSlot(engine.addBusinessHours(oldTaskEnd, deltaHours));
           }
         } else {
           // Para retroceder, usamos desplazamiento por milisegundos y normalizamos el resultado
           const diffMs = newStart.getTime() - oldStart.getTime();
-          newTaskStart = normalizeToWorkStart(new Date(oldTaskStart.getTime() + diffMs));
-          newTaskEnd = normalizeToWorkStart(new Date(oldTaskEnd.getTime() + diffMs));
+          newTaskStart = engine.getNextAvailableWorkingSlot(new Date(oldTaskStart.getTime() + diffMs));
+          newTaskEnd = engine.getNextAvailableWorkingSlot(new Date(oldTaskEnd.getTime() + diffMs));
         }
 
         movedCount++;

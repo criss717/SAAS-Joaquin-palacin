@@ -14,10 +14,11 @@ import { updateCatalogFromTask, updateCatalogMaterialsFromTask } from "@/lib/act
 import { calculateEndDateAction, calculateHoursAction, getNextWorkingDayAction } from "@/lib/actions/time";
 import { downloadMaterialReport } from "@/lib/utils/excel";
 import { addCalendarDays } from "@/lib/external-calendar";
-import { Package, Layers, GitBranch, Clock, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, X, Loader2, Hash, RefreshCw, Download, Save, UserPlus, Check } from "lucide-react";
+import { Package, Layers, GitBranch, Clock, CheckCircle2, PlayCircle, CheckCheck, XCircle, Percent, Trash2, X, Loader2, Hash, RefreshCw, Download, Save, UserPlus, Check, Wrench, Truck } from "lucide-react";
 import Swal from "sweetalert2";
 import { TaskStatus } from "@prisma/client";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 type Stage = { id: string; name: string; color: string }
 type User = { id: string; name: string; email: string; role: string }
@@ -54,6 +55,12 @@ function fromDateTimeInput(str: string): Date {
 const normalize = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
+function isExternalStage(stageName?: string): boolean {
+  if (!stageName) return false;
+  const n = normalize(stageName);
+  return n.includes("externo") || n.includes("proveedor");
+}
+
 export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTaskUpdated, onCreateSubTask, onDeleteTask, materials, unitTypes }: Props) {
   const [isPending, startTransition] = useTransition();
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
@@ -62,10 +69,10 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   // Calcular unitHours inicial una sola vez
   const initialUnitHours = task?.unitEstimatedHours ?? ((task?.estimatedHours ?? 0) / (task?.quantity || 1));
 
-  // Estados inicializados directamente desde task.
-  // Gracias a key={selectedTask?.id} en KanbanBoard, este componente se
-  // DESTRUYE y RECREA cada vez que cambias de tarea, así que useState
-  // se ejecuta fresco cada vez. No hace falta useEffect de sincronización.
+  // Modo: "taller" (Horas) vs "externo" (Semanas)
+  const initialIsExt = Boolean((task?.deliveryDays && task.deliveryDays > 0) || isExternalStage(task?.stage));
+  const [taskType, setTaskType] = useState<"taller" | "externo">(initialIsExt ? "externo" : "taller");
+
   const [localName, setLocalName] = useState(task?.name ?? "");
   const [selectedStage, setSelectedStage] = useState(task?.stage ?? "");
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus>(task?.status ?? "EN_PROCESO");
@@ -74,7 +81,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [endDate, setEndDate] = useState(() => toDateTimeLocalValue(task?.endDate ?? ""));
   const [estimatedHours, setEstimatedHours] = useState<number>(() => {
     const h = task?.estimatedHours ?? 0;
-    if (task?.stage !== "Pedido Externo" && task?.stage !== "Entregado Externo" && h === 0 && task?.startDate && task?.endDate) {
+    if (!initialIsExt && h === 0 && task?.startDate && task?.endDate) {
       const start = new Date(task.startDate);
       const end = new Date(task.endDate);
       const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -91,47 +98,72 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
   const [unitHours, setUnitHours] = useState(initialUnitHours);
   const [localDeliveryDays, setLocalDeliveryDays] = useState(() => {
     const d = task?.deliveryDays ?? 0;
-    const isExt = task?.stage === "Pedido Externo" || task?.stage === "Entregado Externo";
-    if (!isExt && d > 0) return 0;
-    if (isExt && d === 0 && task?.startDate && task?.endDate) {
+    if (!initialIsExt) return 0;
+    if (initialIsExt && d === 0 && task?.startDate && task?.endDate) {
       const start = new Date(task.startDate);
       const end = new Date(task.endDate);
       return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
     }
-    return d;
+    return d > 0 ? d : 7;
   });
   const [displayWeeks, setDisplayWeeks] = useState(() =>
-    localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : ""
+    initialIsExt && localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : "1.0"
   );
 
   // Sincronizar displayWeeks cuando localDeliveryDays cambia externamente (useEffect, handleStageChange)
   useEffect(() => {
-    setDisplayWeeks(localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : "");
-  }, [localDeliveryDays]);
+    if (taskType === "externo") {
+      setDisplayWeeks(localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : "1.0");
+    }
+  }, [localDeliveryDays, taskType]);
+
+  const handleTaskTypeChange = (type: "taller" | "externo") => {
+    setTaskType(type);
+    if (type === "externo") {
+      setEstimatedHours(0);
+      setUnitHours(0);
+      const days = localDeliveryDays > 0 ? localDeliveryDays : 7;
+      setLocalDeliveryDays(days);
+      setDisplayWeeks((days / 7).toFixed(1));
+      if (startDate) {
+        const newEnd = addCalendarDays(fromDateTimeInput(startDate), days);
+        setEndDate(toDateTimeLocalValue(newEnd));
+      }
+      if (!isExternalStage(selectedStage)) {
+        const extStage = stages.find(s => isExternalStage(s.name));
+        if (extStage) setSelectedStage(extStage.name);
+      }
+    } else {
+      const defaultHours = Math.max(8, unitHours > 0 ? unitHours * (localQuantity || 1) : 8);
+      setEstimatedHours(defaultHours);
+      setUnitHours(Number((defaultHours / (localQuantity || 1)).toFixed(1)));
+      setLocalDeliveryDays(0);
+      if (startDate) {
+        calculateEndDateAction(fromDateTimeInput(startDate), defaultHours).then(newEnd => {
+          setEndDate(toDateTimeLocalValue(newEnd));
+        }).catch(() => {});
+      }
+      if (isExternalStage(selectedStage)) {
+        const workshopStage = stages.find(s => !isExternalStage(s.name));
+        if (workshopStage) setSelectedStage(workshopStage.name);
+      }
+    }
+  };
+
+  const handleStageChange = (stageName: string) => {
+    setSelectedStage(stageName);
+    if (isExternalStage(stageName) && taskType !== "externo") {
+      handleTaskTypeChange("externo");
+    } else if (!isExternalStage(stageName) && taskType === "externo") {
+      handleTaskTypeChange("taller");
+    }
+  };
 
   // Nuevo material temporal
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [newMaterialQty, setNewMaterialQty] = useState(0);
   const [newUnitTypeId, setNewUnitTypeId] = useState<string | null>(null);
   const [materialSearch, setMaterialSearch] = useState("");
-
-  // Auto-calcular al cambiar de etapa si no hay valor
-  useEffect(() => {
-    const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
-    if (isExt && localDeliveryDays === 0 && startDate && endDate) {
-      const start = fromDateTimeInput(startDate);
-      const end = fromDateTimeInput(endDate);
-      const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      setLocalDeliveryDays(diffDays);
-    }
-    if (!isExt && estimatedHours === 0 && startDate && endDate) {
-      const start = fromDateTimeInput(startDate);
-      const end = fromDateTimeInput(endDate);
-      const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      setEstimatedHours(Math.round(diffDays * 8));
-      setUnitHours(Math.round(diffDays * 8) / (localQuantity || 1));
-    }
-  }, [selectedStage]);
 
   // Detección de cambios: comparamos contra task original (inmutable durante la vida del modal)
   const hasChanges = () => {
@@ -143,6 +175,8 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     const origPredIds = (task.predecessors ?? []).map(p => p.predecessor.id).sort().join(',');
     const curPredIds = [...predecessorIds].sort().join(',');
 
+    const isExt = taskType === "externo";
+
     return (
       localName !== (task.name ?? "") ||
       selectedStage !== (task.stage ?? "") ||
@@ -150,11 +184,13 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       localProgress !== (task.progress ?? 0) ||
       localIsAssembly !== (task.isAssembly ?? false) ||
       localQuantity !== (task.quantity ?? 1) ||
-      localDeliveryDays !== (task.deliveryDays ?? 0) ||
+      (isExt
+        ? localDeliveryDays !== (task.deliveryDays ?? 0)
+        : Math.abs(estimatedHours - (task.estimatedHours ?? 0)) > 0.05 || Math.abs(unitHours - initialUnitHours) > 0.05
+      ) ||
       (parentId ?? null) !== (task.parentId ?? null) ||
       startDate !== toDateTimeLocalValue(task.startDate) ||
       endDate !== toDateTimeLocalValue(task.endDate) ||
-      Math.abs(unitHours - initialUnitHours) > 0.05 ||
       origAssigneeIds !== curAssigneeIds ||
       origPredIds !== curPredIds
     );
@@ -197,10 +233,17 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
 
     setIsCalculating(true);
     try {
-      const nextStart = await getNextWorkingDayAction(maxEnd);
-      setStartDate(toDateTimeLocalValue(nextStart));
-      const newEnd = await calculateEndDateAction(nextStart, estimatedHours);
-      setEndDate(toDateTimeLocalValue(newEnd));
+      const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo" || localDeliveryDays > 0;
+      if (isExt) {
+        setStartDate(toDateTimeLocalValue(maxEnd));
+        const newEnd = addCalendarDays(maxEnd, localDeliveryDays > 0 ? localDeliveryDays : 7);
+        setEndDate(toDateTimeLocalValue(newEnd));
+      } else {
+        const nextStart = await getNextWorkingDayAction(maxEnd);
+        setStartDate(toDateTimeLocalValue(nextStart));
+        const newEnd = await calculateEndDateAction(nextStart, estimatedHours || 8);
+        setEndDate(toDateTimeLocalValue(newEnd));
+      }
     } catch (err) {
       console.error("Error al recalcular fechas por dependencias:", err);
     } finally {
@@ -238,15 +281,14 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       setUnitHours(Number((hours / (localQuantity || 1)).toFixed(1)));
       setError("");
     } catch {
-      // Silencioso
-    } finally {
+      // Silenci    } finally {
       setIsCalculating(false);
     }
   }, [localQuantity]);
 
   const onStartDateChange = (val: string) => {
     if (!val || val.length < 16) return;
-    const year=Number(val.substring(0, 4));
+    const year = Number(val.substring(0, 4));
     const yearMin = new Date().getFullYear() - 5;
     const yearMax = new Date().getFullYear() + 5;
     if (year < yearMin || year > yearMax) {
@@ -254,19 +296,18 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       return;
     }
     setStartDate(val);
-    if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
-    const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
-    if (isExt && localDeliveryDays > 0) {
-      const newEnd = addCalendarDays(fromDateTimeInput(val), localDeliveryDays);
+    if (taskType === "externo") {
+      const newEnd = addCalendarDays(fromDateTimeInput(val), localDeliveryDays || 7);
       setEndDate(toDateTimeLocalValue(newEnd));
     } else {
-      calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 500);
+      if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
+      calcEndTimer.current = setTimeout(() => handleCalculateEndDate(val, estimatedHours), 400);
     }
   };
 
   const onEndDateChange = (val: string) => {
     if (!val || val.length < 16) return;
-    const year=Number(val.substring(0, 4));
+    const year = Number(val.substring(0, 4));
     const yearMin = new Date().getFullYear() - 5;
     const yearMax = new Date().getFullYear() + 5;
     if (year < yearMin || year > yearMax) {
@@ -274,8 +315,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       return;
     }
     setEndDate(val);
-    const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
-    if (isExt && startDate) {
+    if (taskType === "externo" && startDate) {
       const start = fromDateTimeInput(startDate);
       const end = fromDateTimeInput(val);
       const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
@@ -283,16 +323,15 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
       setDisplayWeeks((diffDays / 7).toFixed(1));
     } else {
       if (calcHoursTimer.current) clearTimeout(calcHoursTimer.current);
-      calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 500);
+      calcHoursTimer.current = setTimeout(() => handleCalculateHours(startDate, val), 400);
     }
   };
 
   const onHoursChange = (val: number) => {
     setEstimatedHours(val);
-    // Recalcular unitHours para que el label (unit x quantity) se actualice
     setUnitHours(Number((val / (localQuantity || 1)).toFixed(1)));
     if (calcEndTimer.current) clearTimeout(calcEndTimer.current);
-    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(startDate, val), 500);
+    calcEndTimer.current = setTimeout(() => handleCalculateEndDate(startDate, val), 400);
   };
 
   const handleDownloadMaterials = async () => {
@@ -353,30 +392,6 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
     else if (status === "EN_PROCESO") setLocalProgress(40);
     else if (status === "APROBADO") setLocalProgress(10);
     else if (status === "CANCELADO") setLocalProgress(0);
-  };
-
-  const handleStageChange = (stage: string) => {
-    setSelectedStage(stage);
-    if (stage === "Pedido Externo" || stage === "Entregado Externo") {
-      if (startDate && endDate) {
-        const start = fromDateTimeInput(startDate);
-        const end = fromDateTimeInput(endDate);
-        const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-        setLocalDeliveryDays(diffDays);
-      } else {
-        setLocalDeliveryDays(localDeliveryDays > 0 ? localDeliveryDays : 7);
-      }
-    } else {
-      if (startDate && endDate) {
-        const start = fromDateTimeInput(startDate);
-        const end = fromDateTimeInput(endDate);
-        const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        const diffHours = Math.max(1, Math.round(diffDays * 8));
-        setEstimatedHours(diffHours);
-        setUnitHours(diffHours / (localQuantity || 1));
-      }
-      setLocalDeliveryDays(0);
-    }
   };
 
   const handleAddMaterial = async () => {
@@ -491,14 +506,20 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         if (startDate && endDate) {
           const origStart = toDateTimeLocalValue(task.startDate);
           const origEnd = toDateTimeLocalValue(task.endDate);
-          if (startDate !== origStart || endDate !== origEnd || estimatedHours !== task.estimatedHours) {
+          const isExt = selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo";
+          const finalHours = isExt ? 0 : estimatedHours;
+          const finalUnitHours = isExt ? 0 : unitHours;
+          const finalDeliveryDays = isExt ? localDeliveryDays : 0;
+
+          if (startDate !== origStart || endDate !== origEnd || finalHours !== task.estimatedHours || finalDeliveryDays !== task.deliveryDays) {
             // Usamos cascade: actualiza la tarea y propaga a sucesoras
             const result = await updateTaskDatesAndCascade(
               task.id,
               fromDateTimeInput(startDate),
               fromDateTimeInput(endDate),
-              estimatedHours,
-              unitHours
+              finalHours,
+              finalUnitHours,
+              finalDeliveryDays
             );
             cascadedUpdates = result.updated;
           }
@@ -778,67 +799,86 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
         handleCloseAttempt();
       }
     }}>
-      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl kanban-scroll">
+      <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto rounded-3xl kanban-scroll py-6">
         <DialogHeader>
-          <div className="flex items-center gap-2 mb-4 justify-between">
-            <div className="w-full flex items-center gap-2">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            {/* SWITCH: PIEZA TALLER vs PEDIDO EXTERNO */}
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-2xl shadow-inner">
               <button
                 type="button"
-                onClick={() => setLocalIsAssembly(!localIsAssembly)}
-                className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase transition-all cursor-pointer ${localIsAssembly === true ? 'bg-violet-50 text-violet-700 ring-1 ring-violet-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-200'}`}
-                title="Haz clic para cambiar entre Pieza y Ensamble"
-              >
-                <Package size={16} className={localIsAssembly === true ? "text-violet-500" : "text-blue-400"} /> {localIsAssembly ? 'Ensamble' : 'Pieza'}
-              </button>
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold uppercase bg-gray-100 text-gray-700 border border-gray-200`}>
-                {selectedStatus.replace('_', ' ')}
-              </span>
-              {error && !error.includes("material") ? <p className="text-[12px] text-red-500 font-bold px-2 py-2 bg-red-50 rounded-xl  animate-pulse">{error}</p> : null}
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={handleDelete}
-                  disabled={isPending}
-                  className="rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 gap-2 cursor-pointer h-7 text-xs font-bold mx-2"
-                >
-                  <Trash2 size={16} />
-                  Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
-                </Button>
-                {!task.catalogPartId && !task.catalogOperationId && (
-                  <Button
-                    variant="outline"
-                    title="Crear pieza/ensamble con todas sus dependencias, materiales en catalogo maestro"
-                    onClick={handleSyncCatalog}
-                    disabled={isPending || isSyncingCatalog}
-                    className="rounded-xl text-xs font-bold text-gray-500 hover:text-blue-600 hover:bg-blue-50 gap-1 cursor-pointer h-7 mx-2"
-                  >
-                    <RefreshCw size={12} />
-                    Crear en catálogo
-                  </Button>
+                onClick={() => handleTaskTypeChange("taller")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                  taskType === "taller"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
                 )}
-              </div>
-              <div className="flex gap-3 mr-8">
+              >
+                <Wrench size={13} className={taskType === "taller" ? "text-blue-500" : "text-gray-400"} />
+                Pieza Taller (Horas)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTaskTypeChange("externo")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                  taskType === "externo"
+                    ? "bg-white text-red-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                <Truck size={13} className={taskType === "externo" ? "text-red-500" : "text-gray-400"} />
+                Pedido Externo (Semanas)
+              </button>
+            </div>
+
+            {error && !error.includes("material") ? (
+              <p className="text-[12px] text-red-500 font-bold px-2 py-1 bg-red-50 rounded-xl animate-pulse">
+                {error}
+              </p>
+            ) : null}
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={handleDelete}
+                disabled={isPending}
+                className="rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 gap-1.5 cursor-pointer h-8 text-xs font-bold"
+              >
+                <Trash2 size={15} />
+                Eliminar {task.isAssembly ? 'Ensamble' : 'Pieza'}
+              </Button>
+              {!task.catalogPartId && !task.catalogOperationId && (
                 <Button
-                  onClick={async () => {
-                    const ok = await handleSave();
-                    if (ok) onClose();
-                  }}
-                  disabled={isPending}
-                  className="rounded-xl bg-blue-100 hover:bg-blue-300 text-blue-600 font-bold px-4 cursor-pointer h-7 border-none"
+                  variant="outline"
+                  title="Crear pieza/ensamble con todas sus dependencias, materiales en catálogo maestro"
+                  onClick={handleSyncCatalog}
+                  disabled={isPending || isSyncingCatalog}
+                  className="rounded-xl text-xs font-bold text-gray-500 hover:text-blue-600 hover:bg-blue-50 gap-1 cursor-pointer h-8"
                 >
-                  <Save />{isPending ? "Guardando..." : "Guardar"}
+                  <RefreshCw size={12} />
+                  Crear en catálogo
                 </Button>
-              </div>
+              )}
+              <Button
+                onClick={async () => {
+                  const ok = await handleSave();
+                  if (ok) onClose();
+                }}
+                disabled={isPending}
+                className="rounded-xl bg-blue-100 hover:bg-blue-300 text-blue-600 font-bold px-6 cursor-pointer h-8 border-none mr-4"
+              >
+                <Save size={14} className="mr-1" />{isPending ? "Guardando..." : "Guardar"}
+              </Button>
             </div>
           </div>
-          <DialogTitle className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-start gap-2 ml-3 flex-col">
-            Nombre de la tarea / Pieza / Ensamble:
+
+          <DialogTitle className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-start gap-2 pt-2 flex-col">
+            Nombre de la tarea / Pieza / {task.isAssembly ? 'Ensamble' : 'Pedido'}:
             <Input
               value={localName}
               onChange={e => setLocalName(e.target.value.toUpperCase())}
-              className="font-semibold ml-[-2px] tracking-normal text-gray-500 border-none shadow-none focus-visible:ring-1 focus-visible:ring-blue-300 px-3 h-8 bg-transparent hover:bg-gray-100 transition-colors"
+              className="font-semibold tracking-normal text-gray-700 border-none shadow-none focus-visible:ring-1 focus-visible:ring-blue-300 px-3 h-8 bg-transparent hover:bg-gray-100 transition-colors w-full"
               placeholder="Nombre de la tarea..."
             />
           </DialogTitle>
@@ -895,7 +935,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                     }
                     const q = Math.max(1, val);
                     setLocalQuantity(q);
-                    if (q > 0) {
+                    if (taskType === "taller" && q > 0) {
                       const newTotal = Number((q * unitHours).toFixed(1));
                       setEstimatedHours(newTotal);
                       handleCalculateEndDate(startDate, newTotal);
@@ -906,7 +946,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               </div>
 
               <div className="space-y-1.5">
-                {selectedStage === "Pedido Externo" || selectedStage === "Entregado Externo" ? (
+                {taskType === "externo" ? (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800">
@@ -930,24 +970,21 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                       step="0.1"
                       min="0.1"
                       value={displayWeeks}
-                      onChange={e => setDisplayWeeks(e.target.value)}
-                      onBlur={e => {
+                      onChange={e => {
+                        setDisplayWeeks(e.target.value);
                         const weeks = parseFloat(e.target.value);
-                        if (!isNaN(weeks) && weeks >= 0.1) {
+                        if (!isNaN(weeks) && weeks > 0) {
                           const days = Math.round(weeks * 7);
                           setLocalDeliveryDays(days);
-                          setDisplayWeeks((days / 7).toFixed(1));
                           if (startDate) {
                             const newEnd = addCalendarDays(fromDateTimeInput(startDate), days);
                             setEndDate(toDateTimeLocalValue(newEnd));
                           }
-                        } else {
-                          setDisplayWeeks(localDeliveryDays > 0 ? (localDeliveryDays / 7).toFixed(1) : "");
                         }
                       }}
                       className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
                     />
-                    <p className="text-[9px] text-gray-500 mt-1">({localDeliveryDays.toFixed(0)} días naturales · proveedor)</p>
+                    <p className="text-[9px] text-gray-500 mt-1">({localDeliveryDays} días naturales - proveedor)</p>
                   </div>
                 ) : (
                   <div className="space-y-1.5">
@@ -974,11 +1011,16 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
                       min="0.5"
                       value={estimatedHours || ""}
                       onChange={e => {
-                        onHoursChange(Math.max(0, Number(Number(e.target.value).toFixed(1))))
+                        const val = parseFloat(e.target.value);
+                        if (isNaN(val)) {
+                          onHoursChange(0);
+                          return;
+                        }
+                        onHoursChange(Number(val.toFixed(1)));
                       }}
                       className="text-sm h-9 text-gray-500 rounded-xl border-gray-200"
                     />
-                    <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x 1 ud)</p>
+                    <p className="text-[9px] text-gray-500 mt-1">({unitHours.toFixed(1)}h x {localQuantity} ud)</p>
                   </div>
                 )}
               </div>
@@ -991,6 +1033,7 @@ export function TaskDetailModal({ task, stages, users, allTasks, onClose, onTask
               <div className="space-y-1.5">
                 <Label className="text-[11px] uppercase font-black tracking-wider text-gray-800 flex items-center justify-between">
                   <span className="flex items-center gap-1"><Clock size={12} className="text-blue-500" /> Fin</span>
+                  {isCalculating && <span className="text-[9px] text-blue-500 font-bold animate-pulse">Calculando...</span>}
                 </Label>
                 <Input type="datetime-local" value={endDate} onChange={e => onEndDateChange(e.target.value)} className="text-sm h-9 text-gray-500 rounded-xl border-gray-200 px-2 w-full" />
               </div>

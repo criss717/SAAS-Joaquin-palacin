@@ -14,6 +14,8 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Swal from "sweetalert2";
 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
 type Props = {
   initialSchedules: WorkSchedule[];
   initialHolidays: Holiday[];
@@ -43,6 +45,15 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
   const [holiPage, setHoliPage] = useState(1);
   const SCHED_PER_PAGE = 6;
   const HOLI_PER_PAGE = 12;
+
+  const handleOpenNew = () => {
+    setName("");
+    setFrom("");
+    setUntil("");
+    setWorkingDays([1, 2, 3, 4, 5]);
+    setShifts([{ start: "08:00", end: "14:00" }, { start: "16:00", end: "18:00" }]);
+    setIsEditing("new");
+  };
 
   const handleSaveSchedule = async () => {
     if (!name || !from || !until) return toast.error("Completa los campos básicos.");
@@ -124,98 +135,128 @@ export function ScheduleClient({ initialSchedules, initialHolidays }: Props) {
 
   return (
     <div className="space-y-12">
+      {/* MODAL DIALOG PARA EDITAR / CREAR TEMPORADA */}
+      <Dialog open={Boolean(isEditing)} onOpenChange={(open) => !open && setIsEditing(null)}>
+        <DialogContent className="sm:max-w-2xl rounded-3xl max-h-[90vh] overflow-y-auto p-6">
+          <DialogHeader className="border-b border-gray-100 pb-3">
+            <DialogTitle className="text-sm font-black uppercase tracking-wider text-gray-800 flex items-center gap-2">
+              <Clock className="text-blue-500" size={16} />
+              {isEditing === "new" ? "Configurar Nueva Temporada" : "Editar Temporada"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-gray-500">Nombre de la Temporada</Label>
+                <Input
+                  autoFocus
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Ej: Verano 2026"
+                  className="rounded-xl border-gray-200"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-gray-500">Desde</Label>
+                <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-xl border-gray-200" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-gray-500">Hasta</Label>
+                <Input type="date" value={until} onChange={e => setUntil(e.target.value)} className="rounded-xl border-gray-200" />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs font-bold text-gray-500 uppercase">Días Laborables</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map((day, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setWorkingDays(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx])}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition-all cursor-pointer ${workingDays.includes(idx) ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100" : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"}`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs font-bold text-gray-500 uppercase">Tramos de Jornada (Shifts)</Label>
+              <div className="space-y-3">
+                {shifts.map((s, idx) => (
+                  <div key={idx} className="flex items-center gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-[10px] font-bold text-gray-400">INICIO</span>
+                      <Input
+                        type="time"
+                        value={s.start}
+                        onChange={e => {
+                          const newShifts = [...shifts];
+                          newShifts[idx].start = e.target.value;
+                          setShifts(newShifts);
+                        }}
+                        className="bg-white rounded-lg h-8 border-gray-200"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-[10px] font-bold text-gray-400">FIN</span>
+                      <Input
+                        type="time"
+                        value={s.end}
+                        onChange={e => {
+                          const newShifts = [...shifts];
+                          newShifts[idx].end = e.target.value;
+                          setShifts(newShifts);
+                        }}
+                        className="bg-white rounded-lg h-8 border-gray-200"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShifts(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-gray-400 hover:text-red-600 h-8 w-8 p-0 cursor-pointer"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShifts([...shifts, { start: "08:00", end: "14:00" }])}
+                  className="w-full border-dashed border-2 border-blue-200 text-blue-600 font-bold py-3.5 rounded-2xl hover:bg-blue-50 transition-all cursor-pointer"
+                >
+                  <Plus size={16} className="mr-2" /> Añadir Tramo (ej. turno tarde)
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-4">
+              <Button type="button" variant="ghost" onClick={() => setIsEditing(null)} className="rounded-xl font-bold text-gray-500 cursor-pointer">Cancelar</Button>
+              <Button type="button" onClick={handleSaveSchedule} className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-8 font-black shadow-lg shadow-blue-200 cursor-pointer">
+                <Check size={18} className="mr-2" /> Guardar Temporada
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* SECCIÓN TEMPORADAS */}
       <section className="space-y-6 min-h-[700px]">
         <header className="flex items-center justify-between border-b pb-4 border-gray-100">
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
             <Clock className="text-blue-500" /> Temporadas y Turnos
           </h2>
-          {!isEditing && (
-            <Button onClick={() => setIsEditing("new")} size="sm" className="rounded-xl bg-blue-100 text-blue-600 font-bold">
-              <Plus size={16} className="mr-2" /> Nueva Temporada
-            </Button>
-          )}
+          <Button onClick={handleOpenNew} size="sm" className="rounded-xl bg-blue-100 hover:bg-blue-200 text-blue-600 font-bold cursor-pointer">
+            <Plus size={16} className="mr-2" /> Nueva Temporada
+          </Button>
         </header>
-
-        {isEditing && (
-          <Card className="border-2 border-blue-200 shadow-xl bg-blue-50/30 rounded-2xl overflow-hidden">
-            <CardHeader className="bg-white/50 border-b border-blue-100">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-blue-900">
-                {isEditing === "new" ? "Configurar Nueva Temporada" : "Editar Temporada"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-gray-500">Nombre de la Temporada</Label>
-                  <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Verano 2026" className="rounded-xl border-gray-200" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-gray-500">Desde</Label>
-                  <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-xl border-gray-200" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-gray-500">Hasta</Label>
-                  <Input type="date" value={until} onChange={e => setUntil(e.target.value)} className="rounded-xl border-gray-200" />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <Label className="text-xs font-bold text-gray-500 uppercase">Días Laborables</Label>
-                <div className="flex flex-wrap gap-2">
-                  {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map((day, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setWorkingDays(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx])}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition-all ${workingDays.includes(idx) ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"}`}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <Label className="text-xs font-bold text-gray-500 uppercase">Tramos de Jornada (Shifts)</Label>
-                <div className="space-y-3">
-                  {shifts.map((s, idx) => (
-                    <div key={idx} className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-blue-100 shadow-sm">
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="text-[10px] font-bold text-gray-400">INICIO</span>
-                        <Input type="time" value={s.start} onChange={e => {
-                          const newShifts = [...shifts];
-                          newShifts[idx].start = e.target.value;
-                          setShifts(newShifts);
-                        }} className="border-none bg-gray-50 rounded-lg h-8" />
-                      </div>
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="text-[10px] font-bold text-gray-400">FIN</span>
-                        <Input type="time" value={s.end} onChange={e => {
-                          const newShifts = [...shifts];
-                          newShifts[idx].end = e.target.value;
-                          setShifts(newShifts);
-                        }} className="border-none bg-gray-50 rounded-lg h-8" />
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => setShifts(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 h-8 w-8 p-0">
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button variant="outline" size="sm" onClick={() => setShifts([...shifts, { start: "08:00", end: "14:00" }])} className="w-full border-dashed border-2 border-blue-200 text-blue-600 font-bold py-4 rounded-2xl hover:bg-blue-50 transition-all">
-                    <Plus size={16} className="mr-2" /> Añadir Tramo (ej. turno tarde)
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-6 border-t border-blue-100 mt-4">
-                <Button variant="ghost" onClick={() => setIsEditing(null)} className="rounded-xl font-bold text-gray-500">Cancelar</Button>
-                <Button onClick={handleSaveSchedule} className="rounded-xl bg-blue-600 px-8 font-black shadow-lg shadow-blue-200">
-                  <Check size={18} className="mr-2" /> Guardar Temporada
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         <div className="flex flex-col min-h-[700px]">
           <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 auto-rows-min">

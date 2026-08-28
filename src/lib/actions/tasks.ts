@@ -275,7 +275,8 @@ export async function updateTaskDatesAndCascade(
   startDate: Date,
   endDate: Date,
   estimatedHours?: number,
-  unitEstimatedHours?: number
+  unitEstimatedHours?: number,
+  deliveryDays?: number
 ): Promise<{ updated: TaskWithRelations[] }> {
   await requireAuth()
   if (!startDate || !endDate) throw new Error("Fechas inválidas")
@@ -293,6 +294,7 @@ export async function updateTaskDatesAndCascade(
   const dataToUpdate: Record<string, string | number | Date> = { startDate, endDate }
   if (estimatedHours !== undefined) dataToUpdate.estimatedHours = estimatedHours
   if (unitEstimatedHours !== undefined) dataToUpdate.unitEstimatedHours = unitEstimatedHours
+  if (deliveryDays !== undefined) dataToUpdate.deliveryDays = deliveryDays
 
   const rootRaw = await prisma.task.update({
     where: { id: taskId },
@@ -337,15 +339,21 @@ export async function updateTaskDatesAndCascade(
       const pred = dep.predecessor as { id: string; name: string; endDate: Date }
       // Usamos la fecha actualizada si la procesamos en esta cadena, sino la de BD
       const predEnd = knownEnds.get(pred.id) ?? new Date(pred.endDate)
-      if (!maxPredEnd || predEnd > maxPredEnd) {
+      if (!maxPredEnd || predEnd.getTime() > maxPredEnd.getTime()) {
         maxPredEnd = predEnd
       }
     }
 
     if (!maxPredEnd) continue // Sin predecesores conocidos, no tocamos
 
-    // Calcular nuevo inicio como el siguiente día laborable tras el predecesor más tardío
-    const newStart = engine.getNextWorkingDayStart(new Date(maxPredEnd))
+    const isExternal = (currentTask.deliveryDays || 0) > 0 ||
+      currentTask.stage === "Pedido Externo" ||
+      currentTask.stage === "Entregado Externo"
+
+    // Calcular nuevo inicio respetando calendario de taller o proveedor
+    const newStart = isExternal
+      ? new Date(maxPredEnd)
+      : engine.getNextAvailableWorkingSlot(new Date(maxPredEnd))
 
     // Actualizar en ambas direcciones (adelante o atrás).
     // Solo omitimos si la fecha es prácticamente la misma (< 1 min) para evitar escrituras innecesarias.
@@ -354,9 +362,8 @@ export async function updateTaskDatesAndCascade(
 
     // Calcular nueva fecha de fin respetando horas estimadas o delivery days
     const hours = currentTask.estimatedHours ?? 8
-    const isExternal = (currentTask.deliveryDays || 0) > 0
     const newEnd = isExternal
-      ? addCalendarDays(new Date(newStart), currentTask.deliveryDays!)
+      ? addCalendarDays(new Date(newStart), currentTask.deliveryDays && currentTask.deliveryDays > 0 ? currentTask.deliveryDays : 7)
       : engine.addBusinessHours(new Date(newStart), hours)
 
     // Actualizar en BD
@@ -498,13 +505,32 @@ export async function createTask(data: {
   endDate: Date
   estimatedHours?: number
   unitEstimatedHours?: number
+  deliveryDays?: number
   quantity?: number
+  materials?: { materialId: string; quantityPerUnit: number; unitTypeId?: string | null }[]
   materialId?: string
   materialQuantityPerUnit?: number
   unitTypeId?: string
 }) {
   await requireAuth()
-  const { assigneeIds, predecessorIds, materialId, materialQuantityPerUnit, unitTypeId, ...rest } = data
+  const { assigneeIds, predecessorIds, materials, materialId, materialQuantityPerUnit, unitTypeId, ...rest } = data
+
+  // Construir relación de materiales (múltiples o individual legacy)
+  let materialsCreate = undefined
+  if (materials && materials.length > 0) {
+    materialsCreate = {
+      create: materials.map(m => ({
+        materialId: m.materialId,
+        quantityPerUnit: m.quantityPerUnit || 0,
+        unitTypeId: m.unitTypeId || null
+      }))
+    }
+  } else if (materialId) {
+    materialsCreate = {
+      create: [{ materialId, quantityPerUnit: materialQuantityPerUnit || 0, unitTypeId: unitTypeId || null }]
+    }
+  }
+
   const task = await prisma.task.create({
     data: {
       ...rest,
@@ -514,9 +540,7 @@ export async function createTask(data: {
       predecessors: predecessorIds?.length
         ? { create: predecessorIds.map(id => ({ predecessorId: id })) }
         : undefined,
-      materials: materialId
-        ? { create: [{ materialId, quantityPerUnit: materialQuantityPerUnit || 0, unitTypeId: unitTypeId || null }] }
-        : undefined
+      materials: materialsCreate
     }
   })
 

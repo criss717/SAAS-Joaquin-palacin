@@ -24,7 +24,7 @@
     "hono": "^4.12.22",
     "lucide-react": "0.577.0",
     "next": "16.2.6",
-    "next-auth": "4.24.14",
+    "next-auth": "4.24.15",
     "nodemailer": "8.0.5",
     "pg": "8.20.0",
     "react": "19.2.5",
